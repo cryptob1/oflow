@@ -1,0 +1,16 @@
+[project]
+name = "local-voice-assistant"
+version = "0.1.0"
+description = "Privacy-focused local voice assistant with Whisper STT"
+requires-python = ">=3.10"
+dependencies = [
+    "faster-whisper>=1.0.0",
+    "sounddevice>=0.4.6",
+    "numpy>=1.24.0",
+    "keyboard>=0.13.5",
+    "rich>=13.0.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
