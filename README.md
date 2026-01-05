@@ -1,18 +1,18 @@
 # OmarchyFlow
 
-> Local voice dictation for Omarchy (Hyprland/Wayland) - A WhisperFlow/Willow alternative using OpenAI's direct audio API
+> Local voice dictation for Omarchy (Hyprland/Wayland) - A WhisperFlow/Willow alternative supporting OpenAI & Gemini direct audio APIs
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Python 3.13+](https://img.shields.io/badge/python-3.13+-blue.svg)](https://www.python.org/downloads/)
 
 ## Features
 
-- ✨ **Fast & Accurate** - Direct OpenAI audio API transcription with 100% reliability
+- ✨ **Fast & Accurate** - Direct audio API transcription (OpenAI: 100% reliable, Gemini: 30% consistency)
 - 🎯 **Smart Formatting** - Automatic case correction, filler word removal, grammar fixes
-- 🔐 **100% Private** - Audio processed through your own OpenAI API key
+- 🔐 **100% Private** - Audio processed through your own API key
 - ⌨️ **Global Hotkey** - Press Super+I to dictate anywhere
 - 🎤 **Auto-Paste** - Transcribed text automatically types into active window
-- 💰 **Cost-Effective** - ~$0.005 per dictation (~0.5 cents)
+- 💰 **Cost-Effective** - OpenAI: ~$0.005/use, Gemini: ~$0.0001/use (cheaper but less reliable)
 
 ## Demo
 
@@ -27,7 +27,7 @@
 - **OS**: Arch Linux with Hyprland/Wayland
 - **Python**: 3.13+
 - **Tools**: `wtype` (for Wayland text injection)
-- **API**: OpenAI API key
+- **API**: OpenAI API key (recommended) OR OpenRouter API key (for Gemini)
 
 ## Installation
 
@@ -58,14 +58,31 @@ uv pip install sounddevice numpy httpx python-dotenv faster-whisper
 
 ### 4. Configure API Key
 
+**Option A: OpenAI (Recommended - 100% reliability)**
+
 ```bash
 cp .env.example .env
 # Edit .env and add your OpenAI API key:
 echo "OPENAI_API_KEY=sk-..." > .env
 echo "USE_OPENAI_DIRECT=true" >> .env
+echo "USE_OPENROUTER_GEMINI=false" >> .env
 ```
 
 Get your API key from: https://platform.openai.com/api-keys
+
+**Option B: Gemini via OpenRouter (Cheaper - 30% consistency)**
+
+```bash
+cp .env.example .env
+# Edit .env and add your OpenRouter API key:
+echo "OPENROUTER_API_KEY=sk-or-v1-..." > .env
+echo "USE_OPENAI_DIRECT=false" >> .env
+echo "USE_OPENROUTER_GEMINI=true" >> .env
+```
+
+Get your API key from: https://openrouter.ai/keys
+
+**Warning**: Gemini has only 30% consistency (same audio = different transcriptions)
 
 ### 5. Setup Hyprland Keybindings
 
@@ -121,9 +138,14 @@ hyprctl reload
 Edit `.env` to customize:
 
 ```bash
-# API Configuration
-OPENAI_API_KEY=sk-...          # Your OpenAI API key
-USE_OPENAI_DIRECT=true          # Use direct OpenAI API (required)
+# API Configuration (choose ONE)
+OPENAI_API_KEY=sk-...           # Your OpenAI API key
+OPENROUTER_API_KEY=sk-or-v1-... # Your OpenRouter API key
+
+# Mode Settings (enable ONLY ONE)
+USE_OPENAI_DIRECT=true          # OpenAI gpt-4o-audio-preview (100% reliable, $0.005/use)
+USE_OPENROUTER_GEMINI=false     # Gemini 2.5 Flash (30% consistency, $0.0001/use)
+USE_AUDIO_DIRECT=false          # Legacy OpenRouter audio (broken)
 
 # Audio Settings (advanced)
 SAMPLE_RATE=16000               # Audio sample rate (default: 16000)
@@ -175,15 +197,15 @@ chmod +x omarchyflow test_suite.py
 
 ## Cost Breakdown
 
-Using `gpt-4o-audio-preview` model:
+| Model | Per 3s dictation | 100 uses | 1000 uses/month | Reliability |
+|-------|------------------|----------|-----------------|-------------|
+| **OpenAI gpt-4o-audio-preview** | ~$0.005 | ~$0.50 | ~$5.00 | **100%** ✅ |
+| **Gemini 2.5 Flash (OpenRouter)** | ~$0.0001 | ~$0.01 | ~$0.10 | **30%** ⚠️ |
 
-| Usage | Tokens | Cost |
-|-------|--------|------|
-| Per 3-second dictation | ~48K audio + 100 text | ~$0.005 |
-| 100 dictations | | ~$0.50 |
-| 1000 dictations/month | | ~$5.00 |
+**OpenAI**: More expensive but 100% consistent transcriptions  
+**Gemini**: 50x cheaper but inconsistent (same audio = different results)
 
-**Much cheaper than transcription services!**
+**Still much cheaper than transcription services!**
 
 ## Architecture
 
@@ -239,11 +261,13 @@ We tested multiple approaches:
 | Approach | Speed | Accuracy | Cost | Reliability |
 |----------|-------|----------|------|-------------|
 | **Whisper Local** | 2-3s | 95% | Free | 100% |
-| **OpenRouter Audio** | 1s | 30% | Low | 30% ❌ |
+| **OpenRouter Gemini 2.5 Flash** | 1s | 60% | $0.0001 | 30% ⚠️ |
+| **OpenRouter Other Models** | 1s | 30% | Low | 30% ❌ |
 | **OpenAI gpt-audio-mini** | 1s | 40% | Low | 40% ❌ |
 | **OpenAI gpt-4o-audio** | 1s | **100%** | $0.005 | **100%** ✅ |
 
-**Result**: Direct OpenAI API with `gpt-4o-audio-preview` is the only reliable solution.
+**Gemini findings:** Works but inconsistent - tested 10x identical audio, got 6 different transcriptions  
+**Result**: OpenAI `gpt-4o-audio-preview` is most reliable. Gemini available as cheaper alternative.
 
 ## Comparison to Alternatives
 

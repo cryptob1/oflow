@@ -20,12 +20,16 @@ OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 USE_AUDIO_DIRECT = os.getenv("USE_AUDIO_DIRECT", "true").lower() == "true"
 USE_OPENAI_DIRECT = os.getenv("USE_OPENAI_DIRECT", "false").lower() == "true"
+USE_OPENROUTER_GEMINI = os.getenv("USE_OPENROUTER_GEMINI", "false").lower() == "true"
 
 class VoiceDictation:
     def __init__(self):
         if USE_OPENAI_DIRECT:
             self.model = None
             print("Using OpenAI Direct API for audio transcription")
+        elif USE_OPENROUTER_GEMINI:
+            self.model = None
+            print("Using OpenRouter Gemini 2.5 Flash for audio transcription")
         elif not USE_AUDIO_DIRECT:
             self.model = WhisperModel("small", device="cpu", compute_type="int8")
         else:
@@ -140,7 +144,6 @@ class VoiceDictation:
                 text = result["choices"][0]["message"]["content"]
                 if text:
                     text = text.strip()
-                    # Remove common preambles
                     preambles = [
                         "here is the transcription:",
                         "following your rules,",
@@ -156,7 +159,6 @@ class VoiceDictation:
                         if text_lower.startswith(preamble):
                             text = text[len(preamble):].strip()
                             text_lower = text.lower()
-                    # Remove leading newlines
                     text = text.lstrip('\n').strip()
                     return text
                 else:
@@ -167,6 +169,56 @@ class VoiceDictation:
                 return None
         except Exception as e:
             print(f"OpenAI Direct error: {e}")
+            return None
+    
+    def transcribe_with_gemini(self, audio_array):
+        try:
+            audio_base64 = self.audio_to_base64(audio_array)
+            
+            response = httpx.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": "google/gemini-2.5-flash",
+                    "messages": [
+                        {
+                            "role": "user",
+                            "content": [
+                                {
+                                    "type": "text",
+                                    "text": "Transcribe."
+                                },
+                                {
+                                    "type": "input_audio",
+                                    "input_audio": {
+                                        "data": audio_base64,
+                                        "format": "wav"
+                                    }
+                                }
+                            ]
+                        }
+                    ],
+                },
+                timeout=15.0,
+            )
+            
+            if response.status_code == 200:
+                result = response.json()
+                text = result["choices"][0]["message"]["content"]
+                if text:
+                    text = text.strip()
+                    return text
+                else:
+                    print(f"Gemini returned empty content")
+                    return None
+            else:
+                print(f"Gemini API failed: {response.status_code} - {response.text}")
+                return None
+        except Exception as e:
+            print(f"Gemini error: {e}")
             return None
     
     def transcribe_with_audio_llm(self, audio_array):
@@ -270,6 +322,14 @@ Raw transcription: {raw_text}"""
             self.save_audio_debug(audio)
             subprocess.run(['notify-send', '-t', '1500', '🎙️ Transcribing with OpenAI...'], stderr=subprocess.DEVNULL)
             text = self.transcribe_with_openai_direct(audio)
+            
+            if not text:
+                subprocess.run(['notify-send', '-t', '2000', '❌ Transcription failed'], stderr=subprocess.DEVNULL)
+                return
+        elif USE_OPENROUTER_GEMINI:
+            self.save_audio_debug(audio)
+            subprocess.run(['notify-send', '-t', '1500', '🎵 Transcribing with Gemini...'], stderr=subprocess.DEVNULL)
+            text = self.transcribe_with_gemini(audio)
             
             if not text:
                 subprocess.run(['notify-send', '-t', '2000', '❌ Transcription failed'], stderr=subprocess.DEVNULL)
