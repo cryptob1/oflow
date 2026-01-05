@@ -120,7 +120,7 @@ During development, we tested multiple models via OpenRouter:
 
 ### Start with OpenAI (default)
 ```bash
-./omarchyflow &
+python omarchyflow.py &
 ```
 
 ### Start with Gemini
@@ -130,7 +130,7 @@ USE_OPENAI_DIRECT=false
 USE_OPENROUTER_GEMINI=true
 
 # Restart server
-./omarchyflow &
+python omarchyflow.py &
 ```
 
 ### Test
@@ -141,7 +141,7 @@ The notification will show:
 - Gemini: "🎵 Transcribing with Gemini..."
 
 ## Files Modified
-- `omarchyflow`: Added `USE_OPENROUTER_GEMINI` flag and `transcribe_with_gemini()` function
+- `omarchyflow.py`: Added `USE_OPENROUTER_GEMINI` flag and `transcribe_with_gemini()` function
 - `.env.example`: Added `OPENROUTER_API_KEY` and `USE_OPENROUTER_GEMINI` options
 - `README.md`: Updated features, requirements, configuration, and cost breakdown
 

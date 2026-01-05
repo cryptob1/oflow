@@ -89,8 +89,8 @@ Get your API key from: https://openrouter.ai/keys
 Add to `~/.config/hypr/bindings.conf`:
 
 ```conf
-bind = SUPER, I, exec, /path/to/omarchyflow/omarchyflow start
-bindr = SUPER, I, exec, /path/to/omarchyflow/omarchyflow stop
+bind = SUPER, I, exec, /path/to/omarchyflow/.venv/bin/python /path/to/omarchyflow/omarchyflow.py start
+bindr = SUPER, I, exec, /path/to/omarchyflow/.venv/bin/python /path/to/omarchyflow/omarchyflow.py stop
 ```
 
 Reload Hyprland config:
@@ -102,7 +102,7 @@ hyprctl reload
 
 ```bash
 # Run in background
-./omarchyflow &
+python omarchyflow.py &
 
 # Or use systemd (recommended)
 # See docs/systemd.md for service file
@@ -181,7 +181,7 @@ uv pip install sounddevice
 ps aux | grep omarchyflow
 
 # Start server
-./omarchyflow &
+python omarchyflow.py &
 ```
 
 ### "Audio volume too low"
@@ -192,7 +192,7 @@ pactl set-source-volume @DEFAULT_SOURCE@ 200%
 
 ### "Permission denied"
 ```bash
-chmod +x omarchyflow test_suite.py
+chmod +x omarchyflow.py test_suite.py
 ```
 
 ## Cost Breakdown
