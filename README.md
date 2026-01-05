@@ -5,15 +5,6 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Python 3.13+](https://img.shields.io/badge/python-3.13+-blue.svg)](https://www.python.org/downloads/)
 
-## Features
-
-- ✨ **Fast & Accurate** - Direct audio API transcription (OpenAI: 100% reliable, Gemini: 30% consistency)
-- 🎯 **Smart Formatting** - Automatic case correction, filler word removal, grammar fixes
-- 🔐 **100% Private** - Audio processed through your own API key
-- ⌨️ **Global Hotkey** - Press Super+I to dictate anywhere
-- 🎤 **Auto-Paste** - Transcribed text automatically types into active window
-- 💰 **Cost-Effective** - OpenAI: ~$0.005/use, Gemini: ~$0.0001/use (cheaper but less reliable)
-
 ## Demo
 
 ```
@@ -22,288 +13,154 @@
 → "My name is Adam"
 ```
 
-## Requirements
-
-- **OS**: Arch Linux with Hyprland/Wayland
-- **Python**: 3.13+
-- **Tools**: `wtype` (for Wayland text injection)
-- **API**: OpenAI API key (recommended) OR OpenRouter API key (for Gemini)
-
-## Installation
-
-### 1. Install System Dependencies
-
-```bash
-# Arch Linux
-sudo pacman -S python python-pip wtype libnotify mpv
-
-# Install uv (Python package manager)
-curl -LsSf https://astral.sh/uv/install.sh | sh
-```
-
-### 2. Clone Repository
+## Quick Start
 
 ```bash
 git clone https://github.com/CryptoB1/omarchyflow.git
 cd omarchyflow
+./setup.sh    # Installs everything, prompts for API key
+make run      # Start the server
 ```
 
-### 3. Install Python Dependencies
+Then press **Super+I** to dictate!
+
+## Features
+
+- ✨ **Fast & Accurate** - Direct audio API transcription (OpenAI: 100% reliable)
+- 🎯 **Smart Formatting** - Filler word removal, case correction, grammar fixes
+- ⌨️ **Global Hotkey** - Press Super+I to dictate anywhere
+- 🎤 **Auto-Paste** - Text automatically types into active window
+- 💰 **Cost-Effective** - ~$0.005/use (or ~$0.0001 with Gemini)
+
+## Requirements
+
+- **OS**: Arch Linux with Hyprland/Wayland
+- **Python**: 3.13+
+- **API Key**: [OpenAI](https://platform.openai.com/api-keys) (recommended) or [OpenRouter](https://openrouter.ai/keys)
+
+## Installation
+
+### Automatic (Recommended)
 
 ```bash
+./setup.sh
+```
+
+The setup script will:
+1. Install system dependencies (wtype, libnotify)
+2. Install uv package manager
+3. Create Python virtual environment
+4. Install all dependencies
+5. Configure your API key
+6. Set up Hyprland keybindings
+
+### Manual
+
+<details>
+<summary>Click to expand manual installation steps</summary>
+
+```bash
+# System dependencies
+sudo pacman -S python wtype libnotify
+
+# Install uv
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Python environment
 uv venv
 source .venv/bin/activate
 uv pip install sounddevice numpy httpx python-dotenv faster-whisper
-```
 
-### 4. Configure API Key
-
-**Option A: OpenAI (Recommended - 100% reliability)**
-
-```bash
+# Configure API key
 cp .env.example .env
-# Edit .env and add your OpenAI API key:
-echo "OPENAI_API_KEY=sk-..." > .env
-echo "USE_OPENAI_DIRECT=true" >> .env
-echo "USE_OPENROUTER_GEMINI=false" >> .env
+# Edit .env with your API key
+
+# Hyprland keybindings - add to ~/.config/hypr/bindings.conf:
+# bind = SUPER, I, exec, /path/to/.venv/bin/python /path/to/omarchyflow.py start
+# bindr = SUPER, I, exec, /path/to/.venv/bin/python /path/to/omarchyflow.py stop
 ```
 
-Get your API key from: https://platform.openai.com/api-keys
-
-**Option B: Gemini via OpenRouter (Cheaper - 30% consistency)**
-
-```bash
-cp .env.example .env
-# Edit .env and add your OpenRouter API key:
-echo "OPENROUTER_API_KEY=sk-or-v1-..." > .env
-echo "USE_OPENAI_DIRECT=false" >> .env
-echo "USE_OPENROUTER_GEMINI=true" >> .env
-```
-
-Get your API key from: https://openrouter.ai/keys
-
-**Warning**: Gemini has only 30% consistency (same audio = different transcriptions)
-
-### 5. Setup Hyprland Keybindings
-
-Add to `~/.config/hypr/bindings.conf`:
-
-```conf
-bind = SUPER, I, exec, /path/to/omarchyflow/.venv/bin/python /path/to/omarchyflow/omarchyflow.py start
-bindr = SUPER, I, exec, /path/to/omarchyflow/.venv/bin/python /path/to/omarchyflow/omarchyflow.py stop
-```
-
-Reload Hyprland config:
-```bash
-hyprctl reload
-```
-
-### 6. Start the Server
-
-```bash
-# Run in background
-python omarchyflow.py &
-
-# Or use systemd (recommended)
-# See docs/systemd.md for service file
-```
+</details>
 
 ## Usage
 
-### Basic Dictation
+### Start the Server
+
+```bash
+make run          # Foreground
+make run &        # Background
+```
+
+Or use systemd for auto-start - see [docs/systemd.md](docs/systemd.md).
+
+### Dictate
 
 1. Press and hold **Super+I**
 2. Speak your text
 3. Release **Super+I**
 4. Text appears in active window
 
-### What Gets Cleaned Up
+### Make Commands
 
-| Input | Output |
-|-------|--------|
-| "um my NAME is ADAM" | "My name is Adam" |
-| "so like first buy milk and uh second call mom" | "1. Buy milk\n2. Call mom" |
-| "STOP doing that" | "Stop doing that" |
-
-### Features
-
-- **Case Normalization**: Converts ALL-CAPS to proper case
-- **Filler Removal**: Removes um, uh, like, you know
-- **Grammar Fixes**: Automatic punctuation and capitalization
-- **List Formatting**: Detects "first, second, third" and formats as numbered lists
-- **Smart Numbers**: Converts "fifteen" to "15", "three thirty PM" to "3:30 PM"
+```bash
+make help     # Show all commands
+make run      # Start server
+make test     # Run test suite
+make status   # Check if server running
+make clean    # Remove generated files
+```
 
 ## Configuration
 
 Edit `.env` to customize:
 
 ```bash
-# API Configuration (choose ONE)
-OPENAI_API_KEY=sk-...           # Your OpenAI API key
-OPENROUTER_API_KEY=sk-or-v1-... # Your OpenRouter API key
+# Choose ONE backend:
+USE_OPENAI_DIRECT=true      # OpenAI ($0.005/use, 100% reliable)
+USE_OPENROUTER_GEMINI=false # Gemini ($0.0001/use, 30% consistency)
 
-# Mode Settings (enable ONLY ONE)
-USE_OPENAI_DIRECT=true          # OpenAI gpt-4o-audio-preview (100% reliable, $0.005/use)
-USE_OPENROUTER_GEMINI=false     # Gemini 2.5 Flash (30% consistency, $0.0001/use)
-USE_AUDIO_DIRECT=false          # Legacy OpenRouter audio (broken)
+# API Keys:
+OPENAI_API_KEY=sk-...
+OPENROUTER_API_KEY=sk-or-v1-...
 
-# Audio Settings (advanced)
-SAMPLE_RATE=16000               # Audio sample rate (default: 16000)
+# Optional:
+SAMPLE_RATE=16000           # Audio sample rate
+DEBUG_MODE=false            # Verbose logging
 ```
 
-## Testing
+## Text Processing
 
-Run the included test suite to verify setup:
+| Input | Output |
+|-------|--------|
+| "um my NAME is ADAM" | "My name is Adam" |
+| "first buy milk second call mom" | "1. Buy milk\n2. Call mom" |
+| "STOP doing that" | "Stop doing that" |
 
-```bash
-./test_suite.py
-```
+**Features:**
+- Filler removal (um, uh, like, you know)
+- Case normalization
+- Punctuation & grammar fixes
+- List detection & formatting
 
-Expected output:
-```
-Total tests: 10
-✅ Passed: 10
-❌ Failed: 0
-Success rate: 100.0%
-```
+## Cost
+
+| Model | Per Use | 1000/month | Reliability |
+|-------|---------|------------|-------------|
+| **OpenAI gpt-4o-audio** | $0.005 | $5.00 | 100% ✅ |
+| **Gemini 2.5 Flash** | $0.0001 | $0.10 | 30% ⚠️ |
 
 ## Troubleshooting
 
-### "No module named 'sounddevice'"
-```bash
-source .venv/bin/activate
-uv pip install sounddevice
-```
-
-### "Server not running"
-```bash
-# Check if server is running
-ps aux | grep omarchyflow
-
-# Start server
-python omarchyflow.py &
-```
-
-### "Audio volume too low"
-The script automatically sets mic volume to 150%. If still quiet:
-```bash
-pactl set-source-volume @DEFAULT_SOURCE@ 200%
-```
-
-### "Permission denied"
-```bash
-chmod +x omarchyflow.py test_suite.py
-```
-
-## Cost Breakdown
-
-| Model | Per 3s dictation | 100 uses | 1000 uses/month | Reliability |
-|-------|------------------|----------|-----------------|-------------|
-| **OpenAI gpt-4o-audio-preview** | ~$0.005 | ~$0.50 | ~$5.00 | **100%** ✅ |
-| **Gemini 2.5 Flash (OpenRouter)** | ~$0.0001 | ~$0.01 | ~$0.10 | **30%** ⚠️ |
-
-**OpenAI**: More expensive but 100% consistent transcriptions  
-**Gemini**: 50x cheaper but inconsistent (same audio = different results)
-
-**Still much cheaper than transcription services!**
-
-## Architecture
-
-```
-┌─────────────┐
-│   Press     │
-│  Super+I    │
-└──────┬──────┘
-       │
-       ▼
-┌─────────────┐
-│   Record    │
-│   Audio     │ (16kHz, mono)
-└──────┬──────┘
-       │
-       ▼
-┌─────────────┐
-│  Normalize  │
-│   Volume    │ (95% peak)
-└──────┬──────┘
-       │
-       ▼
-┌─────────────┐
-│ Base64      │
-│ Encode      │
-└──────┬──────┘
-       │
-       ▼
-┌─────────────────────────┐
-│  OpenAI API             │
-│  gpt-4o-audio-preview   │
-│  Minimal prompt:        │
-│  "Transcribe."          │
-└──────┬──────────────────┘
-       │
-       ▼
-┌─────────────┐
-│  Clean      │
-│  Output     │ (strip preambles)
-└──────┬──────┘
-       │
-       ▼
-┌─────────────┐
-│   wtype     │
-│  (paste)    │
-└─────────────┘
-```
-
-## Why Not Whisper?
-
-We tested multiple approaches:
-
-| Approach | Speed | Accuracy | Cost | Reliability |
-|----------|-------|----------|------|-------------|
-| **Whisper Local** | 2-3s | 95% | Free | 100% |
-| **OpenRouter Gemini 2.5 Flash** | 1s | 60% | $0.0001 | 30% ⚠️ |
-| **OpenRouter Other Models** | 1s | 30% | Low | 30% ❌ |
-| **OpenAI gpt-audio-mini** | 1s | 40% | Low | 40% ❌ |
-| **OpenAI gpt-4o-audio** | 1s | **100%** | $0.005 | **100%** ✅ |
-
-**Gemini findings:** Works but inconsistent - tested 10x identical audio, got 6 different transcriptions  
-**Result**: OpenAI `gpt-4o-audio-preview` is most reliable. Gemini available as cheaper alternative.
-
-## Comparison to Alternatives
-
-| Feature | OmarchyFlow | WhisperFlow | Willow |
-|---------|-------------|-------------|--------|
-| **Platform** | Linux/Wayland | macOS | Any |
-| **Backend** | OpenAI Direct | Whisper.cpp/Cloud | CTranslate2 |
-| **Cost** | $0.005/use | Free/Paid | Free (self-host) |
-| **Speed** | ~1s | ~2s | ~1s |
-| **Accuracy** | 100% | 95% | 98% |
-| **Setup** | Simple | Simple | Complex |
-| **Privacy** | API-based | Local/Cloud | Local |
-
-## Contributing
-
-Contributions welcome! Please:
-
-1. Fork the repo
-2. Create a feature branch
-3. Test with `./test_suite.py`
-4. Submit a PR
+| Problem | Solution |
+|---------|----------|
+| "Server not running" | `make run &` |
+| "No module found" | `source .venv/bin/activate` |
+| Audio too quiet | `pactl set-source-volume @DEFAULT_SOURCE@ 200%` |
+| wtype not found | `sudo pacman -S wtype` |
 
 ## License
 
-MIT License - see [LICENSE](LICENSE)
-
-## Acknowledgments
-
-- Inspired by [WhisperFlow](https://github.com/moritzWa/whisperflow) (macOS)
-- Inspired by [Willow](https://github.com/toverainc/willow) (ESP32 hardware)
-- Built for [Omarchy](https://github.com/omarchy) Hyprland setup
-
-## Support
-
-- **Issues**: https://github.com/CryptoB1/omarchyflow/issues
-- **Discussions**: https://github.com/CryptoB1/omarchyflow/discussions
+MIT - see [LICENSE](LICENSE)
 
 ---
 
