@@ -220,3 +220,16 @@ export async function saveSettings(settings: Settings): Promise<void> {
         throw new Error(`Failed to save settings: ${error}`);
     }
 }
+
+/**
+ * Clears all transcript history.
+ */
+export async function clearHistory(): Promise<void> {
+    try {
+        await writeTextFile('.omarchyflow/transcripts.jsonl', '', {
+            baseDir: BaseDirectory.Home
+        });
+    } catch (error) {
+        throw new Error(`Failed to clear history: ${error}`);
+    }
+}

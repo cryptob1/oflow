@@ -136,51 +136,39 @@ export function Dashboard() {
                 </Card>
             </div>
 
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
-                <Card className="col-span-4">
-                    <CardHeader>
-                        <CardTitle>Recent Activity</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        <div className="text-sm text-muted-foreground flex items-center justify-center h-[200px] border-dashed border-2 rounded-md bg-muted/20">
-                            Chart Placeholder (Recharts)
+            <Card>
+                <CardHeader>
+                    <CardTitle>Recent Transcripts</CardTitle>
+                </CardHeader>
+                <CardContent>
+                    {isLoading ? (
+                        <div className="flex items-center justify-center h-[200px]">
+                            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
                         </div>
-                    </CardContent>
-                </Card>
-                <Card className="col-span-3">
-                    <CardHeader>
-                        <CardTitle>Recent Transcripts</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        {isLoading ? (
-                            <div className="flex items-center justify-center h-[200px]">
-                                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-                            </div>
-                        ) : recentTranscripts.length === 0 ? (
-                            <div className="flex items-center justify-center h-[200px] text-muted-foreground">
-                                <p className="text-sm">No transcripts yet.</p>
-                            </div>
-                        ) : (
-                            <div className="space-y-4">
-                                {recentTranscripts.map((transcript, index) => {
-                                    const preview = transcript.cleaned.length > 50 
-                                        ? transcript.cleaned.substring(0, 50) + "..." 
-                                        : transcript.cleaned;
-                                    
-                                    return (
-                                        <div key={index} className="flex items-start gap-4 p-3 rounded-lg hover:bg-muted/50 transition-colors border bg-card/50">
-                                            <div className="space-y-1 flex-1">
-                                                <p className="text-sm font-medium leading-none">{preview}</p>
-                                                <p className="text-xs text-muted-foreground">{getTimeAgo(transcript.timestamp)}</p>
-                                            </div>
+                    ) : recentTranscripts.length === 0 ? (
+                        <div className="flex items-center justify-center h-[200px] text-muted-foreground">
+                            <p className="text-sm">No transcripts yet. Press Super+I to start recording.</p>
+                        </div>
+                    ) : (
+                        <div className="grid gap-3 md:grid-cols-2">
+                            {recentTranscripts.map((transcript, index) => {
+                                const preview = transcript.cleaned.length > 80
+                                    ? transcript.cleaned.substring(0, 80) + "..."
+                                    : transcript.cleaned;
+
+                                return (
+                                    <div key={index} className="flex items-start gap-4 p-3 rounded-lg hover:bg-muted/50 transition-colors border bg-card/50">
+                                        <div className="space-y-1 flex-1">
+                                            <p className="text-sm font-medium leading-none">{preview}</p>
+                                            <p className="text-xs text-muted-foreground">{getTimeAgo(transcript.timestamp)}</p>
                                         </div>
-                                    );
-                                })}
-                            </div>
-                        )}
-                    </CardContent>
-                </Card>
-            </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
+                </CardContent>
+            </Card>
         </div>
     );
 }

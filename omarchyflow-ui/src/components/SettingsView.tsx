@@ -3,7 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
-import { loadSettings, saveSettings, type Settings } from "@/lib/api";
+import { loadSettings, saveSettings, clearHistory, type Settings } from "@/lib/api";
 import { CheckCircle2, AlertCircle } from "lucide-react";
 
 export function SettingsView() {
@@ -13,6 +13,7 @@ export function SettingsView() {
     });
     const [isLoading, setIsLoading] = useState(true);
     const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+    const [clearStatus, setClearStatus] = useState<"idle" | "clearing" | "cleared" | "error">("idle");
 
     useEffect(() => {
         const load = async () => {
@@ -42,6 +43,23 @@ export function SettingsView() {
             console.error("Failed to save settings:", error);
             setSaveStatus("error");
             setTimeout(() => setSaveStatus("idle"), 3000);
+        }
+    };
+
+    const handleClearHistory = async () => {
+        if (!confirm("Are you sure you want to clear all transcript history? This cannot be undone.")) {
+            return;
+        }
+
+        setClearStatus("clearing");
+        try {
+            await clearHistory();
+            setClearStatus("cleared");
+            setTimeout(() => setClearStatus("idle"), 2000);
+        } catch (error) {
+            console.error("Failed to clear history:", error);
+            setClearStatus("error");
+            setTimeout(() => setClearStatus("idle"), 3000);
         }
     };
 
@@ -110,8 +128,27 @@ export function SettingsView() {
                                 ~/.omarchyflow/transcripts.jsonl
                             </div>
                         </div>
-                        <div className="pt-2">
-                            <Button variant="outline" className="text-destructive hover:text-destructive">Clear All History</Button>
+                        <div className="pt-2 space-y-2">
+                            {clearStatus === "cleared" && (
+                                <div className="flex items-center gap-2 text-sm text-green-600 dark:text-green-400">
+                                    <CheckCircle2 className="h-4 w-4" />
+                                    History cleared
+                                </div>
+                            )}
+                            {clearStatus === "error" && (
+                                <div className="flex items-center gap-2 text-sm text-destructive">
+                                    <AlertCircle className="h-4 w-4" />
+                                    Failed to clear history
+                                </div>
+                            )}
+                            <Button
+                                variant="outline"
+                                className="text-destructive hover:text-destructive"
+                                onClick={handleClearHistory}
+                                disabled={clearStatus === "clearing"}
+                            >
+                                {clearStatus === "clearing" ? "Clearing..." : "Clear All History"}
+                            </Button>
                         </div>
                     </CardContent>
                 </Card>

@@ -89,8 +89,35 @@ OPENAI_API_KEY_PATTERN = re.compile(r"^sk-")
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 DEBUG_MODE = os.getenv("DEBUG_MODE", "false").lower() == "true"
-ENABLE_CLEANUP = os.getenv("ENABLE_CLEANUP", "true").lower() == "true"
-ENABLE_MEMORY = os.getenv("ENABLE_MEMORY", "false").lower() == "true"
+
+# Default settings (can be overridden by settings.json)
+DEFAULT_ENABLE_CLEANUP = os.getenv("ENABLE_CLEANUP", "true").lower() == "true"
+DEFAULT_ENABLE_MEMORY = os.getenv("ENABLE_MEMORY", "false").lower() == "true"
+
+
+def load_settings() -> dict:
+    """
+    Load settings from ~/.omarchyflow/settings.json.
+    Falls back to environment variable defaults if file doesn't exist.
+
+    Returns:
+        dict with 'enableCleanup' and 'enableMemory' keys
+    """
+    try:
+        if SETTINGS_FILE.exists():
+            with open(SETTINGS_FILE) as f:
+                settings = json.load(f)
+                return {
+                    'enableCleanup': settings.get('enableCleanup', DEFAULT_ENABLE_CLEANUP),
+                    'enableMemory': settings.get('enableMemory', DEFAULT_ENABLE_MEMORY),
+                }
+    except Exception as e:
+        logger.warning(f"Failed to load settings from {SETTINGS_FILE}: {e}")
+
+    return {
+        'enableCleanup': DEFAULT_ENABLE_CLEANUP,
+        'enableMemory': DEFAULT_ENABLE_MEMORY,
+    }
 
 
 # ============================================================================
@@ -473,14 +500,19 @@ PATTERNS (output as numbered list):"""
 
 
 # LangGraph Pipeline
-def create_transcription_graph():
-    """Create the LangGraph workflow"""
-    
+def create_transcription_graph(enable_cleanup: bool = True, enable_memory: bool = False):
+    """Create the LangGraph workflow
+
+    Args:
+        enable_cleanup: Whether to use GPT-4o-mini for text cleanup
+        enable_memory: Whether to use the memory system for learning patterns
+    """
+
     whisper = WhisperAPI(OPENAI_API_KEY)
-    cleanup_agent = TextCleanupAgent(OPENAI_API_KEY) if ENABLE_CLEANUP else None
+    cleanup_agent = TextCleanupAgent(OPENAI_API_KEY) if enable_cleanup else None
     storage = StorageManager()
-    memory_builder = MemoryBuilder(OPENAI_API_KEY) if ENABLE_MEMORY else None
-    
+    memory_builder = MemoryBuilder(OPENAI_API_KEY) if enable_memory else None
+
     async def node_whisper(state: TranscriptionState) -> TranscriptionState:
         """Node 1: Transcribe with Whisper"""
         try:
@@ -495,9 +527,9 @@ def create_transcription_graph():
 
     async def node_cleanup(state: TranscriptionState) -> TranscriptionState:
         """Node 2: Clean up with GPT-4o-mini"""
-        if state.get("error") or not ENABLE_CLEANUP:
+        if state.get("error") or not enable_cleanup:
             return state
-        
+
         try:
             cleaned = await cleanup_agent.cleanup(
                 state["raw_transcript"],
@@ -514,16 +546,16 @@ def create_transcription_graph():
         """Node 3: Store transcript"""
         if state.get("error"):
             return state
-        
+
         try:
             storage.save_transcript(
                 raw=state["raw_transcript"],
                 cleaned=state["cleaned_text"],
                 timestamp=state["timestamp"],
             )
-            
+
             # Check if we should build memories
-            if ENABLE_MEMORY and storage.count_transcripts() % MEMORY_BUILD_THRESHOLD == 0:
+            if enable_memory and storage.count_transcripts() % MEMORY_BUILD_THRESHOLD == 0:
                 logger.info(f"Threshold reached, building memories...")
                 recent = storage.get_recent_transcripts(MEMORY_BUILD_THRESHOLD)
                 memories = await memory_builder.build_memories(recent)
@@ -531,14 +563,14 @@ def create_transcription_graph():
                 state["memories"] = memories
         except Exception as e:
             logger.warning(f"Storage failed: {e}")
-        
+
         return state
 
     # Build graph
     workflow = StateGraph(TranscriptionState)
-    
+
     workflow.add_node("whisper", node_whisper)
-    if ENABLE_CLEANUP:
+    if enable_cleanup:
         workflow.add_node("cleanup", node_cleanup)
         workflow.add_node("storage", node_storage)
         
@@ -558,7 +590,7 @@ def create_transcription_graph():
 
 async def process_audio_with_graph(audio: np.ndarray) -> AsyncIterator[VoiceEvent]:
     """Process audio through LangGraph pipeline"""
-    
+
     # Validate
     normalized_audio = AudioProcessor.normalize(audio)
     valid, error_msg = AudioValidator.validate(normalized_audio)
@@ -568,14 +600,20 @@ async def process_audio_with_graph(audio: np.ndarray) -> AsyncIterator[VoiceEven
 
     # Convert to base64
     audio_base64 = AudioProcessor.to_base64_wav(normalized_audio, SAMPLE_RATE)
-    
+
     if not OPENAI_API_KEY:
         yield VoiceEvent(type=EventType.STT_ERROR, error="OPENAI_API_KEY not set")
         return
 
+    # Load settings from JSON file (allows UI to control behavior)
+    settings = load_settings()
+    enable_cleanup = settings['enableCleanup']
+    enable_memory = settings['enableMemory']
+    logger.debug(f"Settings: cleanup={enable_cleanup}, memory={enable_memory}")
+
     # Load existing memories
     storage = StorageManager()
-    memories = storage.load_memories() if ENABLE_MEMORY else []
+    memories = storage.load_memories() if enable_memory else []
 
     # Create initial state
     initial_state: TranscriptionState = {
@@ -589,7 +627,7 @@ async def process_audio_with_graph(audio: np.ndarray) -> AsyncIterator[VoiceEven
 
     # Run through graph
     try:
-        graph = create_transcription_graph()
+        graph = create_transcription_graph(enable_cleanup=enable_cleanup, enable_memory=enable_memory)
         final_state = await graph.ainvoke(initial_state)
         
         if final_state.get("error"):

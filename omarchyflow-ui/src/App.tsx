@@ -17,56 +17,20 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [backendRunning, setBackendRunning] = useState(true);
 
-  // Register global hotkey and show window on mount (Tauri only)
+  // Show window on mount (Tauri only)
+  // Note: Global hotkey (Super+I) is handled by Hyprland bindings, not Tauri
   useEffect(() => {
     if (!isTauri) return;
 
-    // Dynamic import for Tauri plugins
     const setupTauri = async () => {
       try {
-        const { register, unregisterAll } = await import("@tauri-apps/plugin-global-shortcut");
-
-        // Show window on startup
-        try {
-          await showWindow();
-        } catch (e) {
-          console.error("Failed to show window:", e);
-        }
-
-        // Register global hotkey (Super+I)
-        try {
-          await unregisterAll();
-          const result = await register("Super+I", async () => {
-            console.log("Hotkey Super+I pressed!");
-            try {
-              const newStatus = await toggleRecording();
-              setIsRecording(newStatus);
-              console.log("Recording toggled via hotkey, new status:", newStatus);
-            } catch (e) {
-              console.error("Hotkey recording error:", e);
-              setError(e instanceof Error ? e.message : "Failed to toggle recording");
-            }
-          });
-          console.log("✅ Global hotkey Super+I registered successfully:", result);
-        } catch (e) {
-          console.error("❌ Failed to register global hotkey:", e);
-          setError(`Hotkey registration failed: ${e instanceof Error ? e.message : String(e)}`);
-        }
+        await showWindow();
       } catch (e) {
-        console.error("Failed to load Tauri plugins:", e);
+        console.error("Failed to show window:", e);
       }
     };
 
     setupTauri();
-
-    // Cleanup on unmount
-    return () => {
-      if (isTauri) {
-        import("@tauri-apps/plugin-global-shortcut").then(({ unregisterAll }) => {
-          unregisterAll().catch(console.error);
-        });
-      }
-    };
   }, []);
 
   // Check backend status and recording status on mount (Tauri only)
