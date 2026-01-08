@@ -33,10 +33,32 @@ build/
 .DS_Store
 Thumbs.db
 
-# Lock files
+# Lock files (keep uv.lock out of repo per pyproject.toml config)
 uv.lock
+
+# Ruff cache
+.ruff_cache/
+
+# Test artifacts
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Build artifacts
+*.egg-info
+dist/
+build/
 
 # Temporary files
 /tmp/
 *.tmp
 *.wav
+
+# Node.js
+node_modules/
+
+# Tauri
+omarchyflow-ui/src-tauri/target/
+
+# Backups
+omarchyflow_v1_backup/

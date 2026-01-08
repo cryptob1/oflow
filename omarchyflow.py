@@ -1,716 +1,818 @@
-#!/usr/bin/env python3 -u
+#!/usr/bin/env python3
 """
-OmarchyFlow - Voice dictation for Omarchy (Hyprland/Wayland)
+OmarchyFlow v2 - WhisperFlow-inspired voice dictation with memory.
 
-A WhisperFlow/Willow alternative supporting OpenAI & Gemini direct audio APIs.
-Uses Unix domain sockets for IPC with Hyprland keybindings.
+A production-ready voice dictation system that records audio, transcribes it using
+OpenAI's Whisper API, cleans it up with GPT-4o-mini, and types it into the active window.
+
+Architecture:
+  Audio Input → Whisper (transcribe) → GPT-4o-mini (cleanup) → Storage → Memory Builder
+
+Features:
+  - Global hotkey support (Super+I)
+  - Audio validation before API calls
+  - Automatic grammar and punctuation correction
+  - Optional memory system for learning user patterns
+  - Unix socket IPC for communication with Tauri frontend
 """
+
 from __future__ import annotations
 
-import sys
-
-sys.stdout.reconfigure(line_buffering=True)
-sys.stderr.reconfigure(line_buffering=True)
-
+import asyncio
 import base64
 import io
+import json
 import logging
 import os
 import queue
+import re
 import signal
 import socket
 import subprocess
-import threading
-import time
+import sys
 import wave
-from typing import TYPE_CHECKING
+from dataclasses import dataclass
+from datetime import datetime
+from enum import Enum
+from pathlib import Path
+from typing import AsyncIterator, TypedDict
 
 import httpx
 import numpy as np
 import sounddevice as sd
 from dotenv import load_dotenv
+from langgraph.graph import StateGraph, END
+from langchain_openai import ChatOpenAI
 
-if TYPE_CHECKING:
-    from numpy.typing import NDArray
-
-# Load environment variables
 load_dotenv()
 
-# =============================================================================
-# Constants
-# =============================================================================
-SOCKET_PATH = "/tmp/voice-dictation.sock"
-DEBUG_AUDIO_PATH = "/tmp/debug_audio.wav"
-
-# Audio constants
-DEFAULT_SAMPLE_RATE = 16000
-AUDIO_CHANNELS = 1
-AUDIO_DTYPE = np.float32
-INT16_MAX = 32767
-AUDIO_SAMPLE_WIDTH = 2  # 16-bit = 2 bytes
-NORMALIZATION_TARGET = 0.95
-
-# API constants
-API_TIMEOUT = 15.0
-CLEANUP_TIMEOUT = 10.0
-
-# Notification durations (ms)
-NOTIFY_SHORT = 1000
-NOTIFY_MEDIUM = 1500
-NOTIFY_LONG = 2000
-
-# =============================================================================
-# Configuration
-# =============================================================================
-OPENROUTER_API_KEY: str | None = os.getenv("OPENROUTER_API_KEY")
-OPENAI_API_KEY: str | None = os.getenv("OPENAI_API_KEY")
-SAMPLE_RATE: int = int(os.getenv("SAMPLE_RATE", str(DEFAULT_SAMPLE_RATE)))
-DEBUG_MODE: bool = os.getenv("DEBUG_MODE", "false").lower() == "true"
-
-# Mode flags
-USE_AUDIO_DIRECT: bool = os.getenv("USE_AUDIO_DIRECT", "false").lower() == "true"
-USE_OPENAI_DIRECT: bool = os.getenv("USE_OPENAI_DIRECT", "false").lower() == "true"
-USE_OPENROUTER_GEMINI: bool = os.getenv("USE_OPENROUTER_GEMINI", "false").lower() == "true"
-
-# =============================================================================
-# Logging setup
-# =============================================================================
 logging.basicConfig(
-    level=logging.DEBUG if DEBUG_MODE else logging.INFO,
+    level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
     datefmt="%H:%M:%S",
 )
 logger = logging.getLogger(__name__)
 
+# ============================================================================
+# Configuration Constants
+# ============================================================================
 
-# =============================================================================
-# Configuration Validation
-# =============================================================================
-def validate_configuration() -> None:
-    """Validate configuration and API keys.
+# Unix socket path for IPC with Tauri frontend
+SOCKET_PATH = "/tmp/voice-dictation.sock"
 
-    Raises:
-        ValueError: If configuration is invalid or required API keys are missing.
-    """
-    modes_enabled = sum([USE_OPENAI_DIRECT, USE_OPENROUTER_GEMINI, USE_AUDIO_DIRECT])
+# Audio configuration
+SAMPLE_RATE = 16000  # 16kHz sample rate (Whisper requirement)
+AUDIO_CHANNELS = 1  # Mono audio
+NORMALIZATION_TARGET = 0.95  # Normalize audio to 95% of max amplitude
+MIN_AUDIO_DURATION_SECONDS = 0.3  # Minimum recording duration
+MIN_AUDIO_AMPLITUDE = 0.01  # Minimum amplitude to detect speech
 
-    if modes_enabled > 1:
-        raise ValueError(
-            "Multiple transcription modes enabled. "
-            "Set only ONE of: USE_OPENAI_DIRECT, USE_OPENROUTER_GEMINI, USE_AUDIO_DIRECT"
-        )
+# API configuration
+API_TIMEOUT_SECONDS = 15.0  # Timeout for API requests
+MAX_RETRIES = 3  # Maximum retry attempts for API calls
 
-    if USE_OPENAI_DIRECT and not OPENAI_API_KEY:
-        raise ValueError("USE_OPENAI_DIRECT=true but OPENAI_API_KEY not set")
+# File paths
+TRANSCRIPTS_FILE = Path.home() / ".omarchyflow" / "transcripts.jsonl"
+MEMORIES_FILE = Path.home() / ".omarchyflow" / "memories.json"
+SETTINGS_FILE = Path.home() / ".omarchyflow" / "settings.json"
 
-    if USE_OPENROUTER_GEMINI and not OPENROUTER_API_KEY:
-        raise ValueError("USE_OPENROUTER_GEMINI=true but OPENROUTER_API_KEY not set")
+# Memory system configuration
+MEMORY_BUILD_THRESHOLD = 1000  # Build memories every N transcripts
+MAX_MEMORIES_IN_CONTEXT = 5  # Maximum memories to include in cleanup prompt
 
-    if USE_AUDIO_DIRECT and not OPENROUTER_API_KEY:
-        raise ValueError("USE_AUDIO_DIRECT=true but OPENROUTER_API_KEY not set")
+# OpenAI API key format validation (relaxed - just check it starts with sk-)
+OPENAI_API_KEY_PATTERN = re.compile(r"^sk-")
 
-    # If no mode is enabled, we need Whisper (local) - check for OpenRouter for cleanup
-    if modes_enabled == 0 and not OPENROUTER_API_KEY:
-        logger.warning(
-            "No API mode enabled and OPENROUTER_API_KEY not set. "
-            "Using local Whisper without LLM cleanup."
-        )
+# ============================================================================
+# Environment Variables and Configuration
+# ============================================================================
 
-
-# =============================================================================
-# Preambles to strip from transcriptions
-# =============================================================================
-TRANSCRIPTION_PREAMBLES = [
-    "here is the transcription:",
-    "following your rules,",
-    "the transcription is:",
-    "following the formatting rules,",
-    "removing all filler words",
-    "sure. here is the transcribed text:",
-    "the following is the cleaned transcription:",
-    "applying the rules,",
-]
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+DEBUG_MODE = os.getenv("DEBUG_MODE", "false").lower() == "true"
+ENABLE_CLEANUP = os.getenv("ENABLE_CLEANUP", "true").lower() == "true"
+ENABLE_MEMORY = os.getenv("ENABLE_MEMORY", "false").lower() == "true"
 
 
-def notify(message: str, duration_ms: int = NOTIFY_MEDIUM) -> None:
-    """Send a desktop notification.
+# ============================================================================
+# Custom Exceptions
+# ============================================================================
 
-    Args:
-        message: The notification message.
-        duration_ms: Duration in milliseconds.
-    """
-    subprocess.run(
-        ["notify-send", "-t", str(duration_ms), message],
-        stderr=subprocess.DEVNULL,
-    )
+class OmarchyFlowError(Exception):
+    """Base exception for OmarchyFlow errors."""
+    pass
 
 
-class VoiceDictation:
-    """Main voice dictation server class.
+class ConfigurationError(OmarchyFlowError):
+    """Raised when configuration is invalid."""
+    pass
 
-    Handles audio recording, transcription via various APIs, and text injection.
-    Uses Unix domain sockets for IPC with Hyprland keybindings.
-    """
 
-    def __init__(self) -> None:
-        """Initialize the voice dictation server.
+class AudioValidationError(OmarchyFlowError):
+    """Raised when audio validation fails."""
+    pass
+
+
+class TranscriptionError(OmarchyFlowError):
+    """Raised when transcription fails."""
+    pass
+
+
+class APIError(OmarchyFlowError):
+    """Raised when API calls fail."""
+    pass
+
+
+# LangGraph State
+class TranscriptionState(TypedDict):
+    audio_base64: str
+    raw_transcript: str
+    cleaned_text: str
+    timestamp: str
+    memories: list[str]
+    error: str | None
+
+
+class EventType(Enum):
+    STT_OUTPUT = "stt_output"
+    STT_ERROR = "stt_error"
+
+
+@dataclass
+class VoiceEvent:
+    type: EventType
+    data: str | None = None
+    error: str | None = None
+
+
+class AudioValidator:
+    """Validates audio data before sending to transcription API."""
+
+    @staticmethod
+    def validate(audio: np.ndarray) -> tuple[bool, str | None]:
+        """
+        Validate audio data for transcription.
+
+        Checks that audio is not empty, meets minimum duration, and has sufficient
+        amplitude to indicate speech.
+
+        Args:
+            audio: Audio data as numpy array (float32, normalized to [-1, 1])
+
+        Returns:
+            Tuple of (is_valid, error_message). If valid, error_message is None.
+            If invalid, error_message describes the issue.
 
         Raises:
-            RuntimeError: If socket initialization fails.
+            AudioValidationError: If audio format is invalid (should not happen).
         """
-        self._running = True
-        self._init_model()
-        self._init_audio()
-        self._init_socket()
-        self._setup_signal_handlers()
+        if len(audio) == 0:
+            return False, "Empty audio"
 
-        logger.info("Voice Dictation Server Ready")
+        abs_audio = np.abs(audio)
+        if len(abs_audio) == 0:
+            return False, "Empty audio"
 
-    def _init_model(self) -> None:
-        """Initialize the transcription model based on configuration."""
-        self.model = None
+        # Check minimum duration
+        min_samples = int(SAMPLE_RATE * MIN_AUDIO_DURATION_SECONDS)
+        if len(audio) < min_samples:
+            duration = len(audio) / SAMPLE_RATE
+            return False, (
+                f"Audio too short ({duration:.2f}s, "
+                f"need >{MIN_AUDIO_DURATION_SECONDS}s)"
+            )
 
-        if USE_OPENAI_DIRECT:
-            logger.info("Using OpenAI Direct API for audio transcription")
-        elif USE_OPENROUTER_GEMINI:
-            logger.info("Using OpenRouter Gemini 2.5 Flash for audio transcription")
-        elif USE_AUDIO_DIRECT:
-            logger.info("Using audio-direct mode (Voxtral)")
+        # Check minimum amplitude (speech detection)
+        max_amplitude = np.max(abs_audio)
+        if max_amplitude < MIN_AUDIO_AMPLITUDE:
+            return False, "Audio too quiet (no speech detected)"
+
+        return True, None
+
+
+class AudioProcessor:
+    """Processes audio data for transcription."""
+
+    @staticmethod
+    def normalize(audio: np.ndarray) -> np.ndarray:
+        """
+        Normalize audio to target amplitude.
+
+        Normalizes audio so the maximum amplitude equals NORMALIZATION_TARGET.
+        This ensures consistent volume levels for transcription.
+
+        Args:
+            audio: Audio data as numpy array (float32, normalized to [-1, 1])
+
+        Returns:
+            Normalized audio array with max amplitude = NORMALIZATION_TARGET
+        """
+        if len(audio) == 0:
+            return audio
+        max_val = np.max(np.abs(audio))
+        if max_val > 0:
+            return audio / max_val * NORMALIZATION_TARGET
+        return audio
+
+    @staticmethod
+    def to_base64_wav(audio: np.ndarray, sample_rate: int) -> str:
+        """
+        Convert audio array to base64-encoded WAV file.
+
+        Args:
+            audio: Audio data as numpy array (float32, normalized to [-1, 1])
+            sample_rate: Sample rate in Hz (typically 16000)
+
+        Returns:
+            Base64-encoded WAV file as string
+
+        Raises:
+            ValueError: If audio conversion fails
+        """
+        try:
+            # Convert float32 [-1, 1] to int16 [-32768, 32767]
+            audio_int16 = (audio * 32767).astype(np.int16)
+
+            buffer = io.BytesIO()
+            with wave.open(buffer, "wb") as wav_file:
+                wav_file.setnchannels(AUDIO_CHANNELS)
+                wav_file.setsampwidth(2)  # 16-bit = 2 bytes per sample
+                wav_file.setframerate(sample_rate)
+                wav_file.writeframes(audio_int16.tobytes())
+
+            buffer.seek(0)
+            return base64.b64encode(buffer.read()).decode("utf-8")
+        except Exception as e:
+            raise ValueError(f"Failed to encode audio to WAV: {e}") from e
+
+
+class WhisperAPI:
+    """
+    OpenAI Whisper API client for speech-to-text transcription.
+
+    Handles communication with OpenAI's Whisper API to transcribe audio files.
+    """
+
+    def __init__(self, api_key: str) -> None:
+        """
+        Initialize Whisper API client.
+
+        Args:
+            api_key: OpenAI API key
+
+        Raises:
+            ConfigurationError: If API key is invalid
+        """
+        if not api_key:
+            raise ConfigurationError("OpenAI API key is required")
+        if not OPENAI_API_KEY_PATTERN.match(api_key):
+            raise ConfigurationError("Invalid OpenAI API key format")
+        
+        self.api_key = api_key
+        self.client = httpx.AsyncClient(timeout=API_TIMEOUT_SECONDS)
+
+    async def transcribe(self, audio_base64: str) -> str:
+        """
+        Transcribe audio using OpenAI Whisper API.
+
+        Args:
+            audio_base64: Base64-encoded WAV audio file
+
+        Returns:
+            Transcribed text as string
+
+        Raises:
+            APIError: If API request fails
+            TranscriptionError: If transcription is empty
+        """
+        try:
+            audio_bytes = base64.b64decode(audio_base64)
+        except Exception as e:
+            raise TranscriptionError(f"Failed to decode audio: {e}") from e
+
+        files = {
+            "file": ("audio.wav", audio_bytes, "audio/wav"),
+        }
+        data = {
+            "model": "whisper-1",
+            "response_format": "json",
+        }
+
+        try:
+            response = await self.client.post(
+                "https://api.openai.com/v1/audio/transcriptions",
+                headers={"Authorization": f"Bearer {self.api_key}"},
+                files=files,
+                data=data,
+            )
+        except httpx.TimeoutException as e:
+            raise APIError(f"Whisper API timeout: {e}") from e
+        except httpx.RequestError as e:
+            raise APIError(f"Whisper API request failed: {e}") from e
+
+        if response.status_code != 200:
+            error_text = response.text[:200]  # Limit error message length
+            raise APIError(
+                f"Whisper API error ({response.status_code}): {error_text}"
+            )
+
+        try:
+            result = response.json()
+            text = result.get("text", "")
+        except Exception as e:
+            raise APIError(f"Failed to parse Whisper API response: {e}") from e
+
+        if not text or not text.strip():
+            raise TranscriptionError("Empty transcription from Whisper API")
+
+        return text.strip()
+
+    async def close(self) -> None:
+        """Close the HTTP client."""
+        await self.client.aclose()
+
+
+class TextCleanupAgent:
+    """Node 2: GPT-4o-mini cleanup and formatting"""
+    
+    def __init__(self, api_key: str):
+        self.llm = ChatOpenAI(
+            model="gpt-4o-mini",
+            temperature=0.3,
+            openai_api_key=api_key,
+        )
+
+    async def cleanup(self, raw_text: str, memories: list[str] | None = None) -> str:
+        memory_context = ""
+        if memories:
+            memory_context = f"\n\nUser context (learned patterns):\n" + "\n".join(f"- {m}" for m in memories[:5])
+        
+        prompt = f"""You are a text cleanup assistant. Clean up the following voice transcript:
+
+1. Fix grammar and punctuation
+2. Capitalize proper nouns correctly (e.g., "LangGraph", "GPT-4o-mini", "OpenAI")
+3. Remove filler words like "um", "uh", "like" (when not meaningful)
+4. Preserve the speaker's intent and meaning
+5. Format as clean, readable text{memory_context}
+
+RAW TRANSCRIPT:
+{raw_text}
+
+CLEANED TEXT (output ONLY the cleaned text, no preamble):"""
+
+        response = await self.llm.ainvoke(prompt)
+        return response.content.strip()
+
+
+class StorageManager:
+    """Node 3: Flat file storage"""
+    
+    def __init__(self):
+        self.transcripts_file = TRANSCRIPTS_FILE
+        self.memories_file = MEMORIES_FILE
+        self.transcripts_file.parent.mkdir(parents=True, exist_ok=True)
+
+    def save_transcript(self, raw: str, cleaned: str, timestamp: str):
+        """Append transcript to JSONL file"""
+        entry = {
+            "timestamp": timestamp,
+            "raw": raw,
+            "cleaned": cleaned,
+        }
+        
+        with open(self.transcripts_file, "a") as f:
+            f.write(json.dumps(entry) + "\n")
+        
+        logger.info(f"Saved transcript #{self.count_transcripts()}")
+
+    def count_transcripts(self) -> int:
+        """Count total transcripts"""
+        if not self.transcripts_file.exists():
+            return 0
+        
+        with open(self.transcripts_file) as f:
+            return sum(1 for _ in f)
+
+    def get_recent_transcripts(self, n: int = 1000) -> list[dict]:
+        """Get last N transcripts"""
+        if not self.transcripts_file.exists():
+            return []
+        
+        with open(self.transcripts_file) as f:
+            lines = f.readlines()
+            return [json.loads(line) for line in lines[-n:]]
+
+    def load_memories(self) -> list[str]:
+        """Load existing memories"""
+        if not self.memories_file.exists():
+            return []
+        
+        with open(self.memories_file) as f:
+            data = json.load(f)
+            return data.get("memories", [])
+
+    def save_memories(self, memories: list[str]):
+        """Save memories to file"""
+        data = {
+            "last_updated": datetime.now().isoformat(),
+            "memories": memories,
+        }
+        
+        with open(self.memories_file, "w") as f:
+            json.dump(data, f, indent=2)
+        
+        logger.info(f"Saved {len(memories)} memories")
+
+
+class MemoryBuilder:
+    """Background job: Build memories from transcripts"""
+    
+    def __init__(self, api_key: str):
+        self.llm = ChatOpenAI(
+            model="gpt-4o-mini",
+            temperature=0.5,
+            openai_api_key=api_key,
+        )
+
+    async def build_memories(self, transcripts: list[dict]) -> list[str]:
+        """Analyze transcripts and extract patterns/memories"""
+        if not transcripts:
+            return []
+        
+        # Concatenate recent transcripts
+        transcript_text = "\n\n".join(
+            f"[{t['timestamp']}] {t['cleaned']}" for t in transcripts[-1000:]
+        )
+        
+        prompt = f"""Analyze these voice transcripts and extract patterns about the user's speech and writing preferences:
+
+1. Common technical terms or proper nouns they use (e.g., "LangGraph", "GPT-4o-mini")
+2. Preferred writing style (formal/casual, punctuation habits)
+3. Domain-specific vocabulary
+4. Frequently mentioned topics or concepts
+
+Output 5-10 concise bullet points that will help improve future transcription cleanup.
+
+TRANSCRIPTS:
+{transcript_text[:8000]}  # Limit to ~8K chars
+
+PATTERNS (output as numbered list):"""
+
+        response = await self.llm.ainvoke(prompt)
+        
+        # Parse response into list
+        memories = []
+        for line in response.content.strip().split("\n"):
+            line = line.strip()
+            if line and (line[0].isdigit() or line.startswith("-")):
+                # Remove numbering/bullets
+                cleaned = line.lstrip("0123456789.-) ")
+                if cleaned:
+                    memories.append(cleaned)
+        
+        return memories
+
+
+# LangGraph Pipeline
+def create_transcription_graph():
+    """Create the LangGraph workflow"""
+    
+    whisper = WhisperAPI(OPENAI_API_KEY)
+    cleanup_agent = TextCleanupAgent(OPENAI_API_KEY) if ENABLE_CLEANUP else None
+    storage = StorageManager()
+    memory_builder = MemoryBuilder(OPENAI_API_KEY) if ENABLE_MEMORY else None
+    
+    async def node_whisper(state: TranscriptionState) -> TranscriptionState:
+        """Node 1: Transcribe with Whisper"""
+        try:
+            raw_transcript = await whisper.transcribe(state["audio_base64"])
+            state["raw_transcript"] = raw_transcript
+            state["cleaned_text"] = raw_transcript  # Default if cleanup disabled
+            logger.info(f"Whisper: {raw_transcript[:100]}...")
+        except Exception as e:
+            state["error"] = str(e)
+            logger.error(f"Whisper failed: {e}")
+        return state
+
+    async def node_cleanup(state: TranscriptionState) -> TranscriptionState:
+        """Node 2: Clean up with GPT-4o-mini"""
+        if state.get("error") or not ENABLE_CLEANUP:
+            return state
+        
+        try:
+            cleaned = await cleanup_agent.cleanup(
+                state["raw_transcript"],
+                state.get("memories", [])
+            )
+            state["cleaned_text"] = cleaned
+            logger.info(f"Cleaned: {cleaned[:100]}...")
+        except Exception as e:
+            logger.warning(f"Cleanup failed, using raw: {e}")
+            # Fall back to raw transcript
+        return state
+
+    async def node_storage(state: TranscriptionState) -> TranscriptionState:
+        """Node 3: Store transcript"""
+        if state.get("error"):
+            return state
+        
+        try:
+            storage.save_transcript(
+                raw=state["raw_transcript"],
+                cleaned=state["cleaned_text"],
+                timestamp=state["timestamp"],
+            )
+            
+            # Check if we should build memories
+            if ENABLE_MEMORY and storage.count_transcripts() % MEMORY_BUILD_THRESHOLD == 0:
+                logger.info(f"Threshold reached, building memories...")
+                recent = storage.get_recent_transcripts(MEMORY_BUILD_THRESHOLD)
+                memories = await memory_builder.build_memories(recent)
+                storage.save_memories(memories)
+                state["memories"] = memories
+        except Exception as e:
+            logger.warning(f"Storage failed: {e}")
+        
+        return state
+
+    # Build graph
+    workflow = StateGraph(TranscriptionState)
+    
+    workflow.add_node("whisper", node_whisper)
+    if ENABLE_CLEANUP:
+        workflow.add_node("cleanup", node_cleanup)
+        workflow.add_node("storage", node_storage)
+        
+        workflow.set_entry_point("whisper")
+        workflow.add_edge("whisper", "cleanup")
+        workflow.add_edge("cleanup", "storage")
+        workflow.add_edge("storage", END)
+    else:
+        workflow.add_node("storage", node_storage)
+        
+        workflow.set_entry_point("whisper")
+        workflow.add_edge("whisper", "storage")
+        workflow.add_edge("storage", END)
+    
+    return workflow.compile()
+
+
+async def process_audio_with_graph(audio: np.ndarray) -> AsyncIterator[VoiceEvent]:
+    """Process audio through LangGraph pipeline"""
+    
+    # Validate
+    normalized_audio = AudioProcessor.normalize(audio)
+    valid, error_msg = AudioValidator.validate(normalized_audio)
+    if not valid:
+        yield VoiceEvent(type=EventType.STT_ERROR, error=error_msg)
+        return
+
+    # Convert to base64
+    audio_base64 = AudioProcessor.to_base64_wav(normalized_audio, SAMPLE_RATE)
+    
+    if not OPENAI_API_KEY:
+        yield VoiceEvent(type=EventType.STT_ERROR, error="OPENAI_API_KEY not set")
+        return
+
+    # Load existing memories
+    storage = StorageManager()
+    memories = storage.load_memories() if ENABLE_MEMORY else []
+
+    # Create initial state
+    initial_state: TranscriptionState = {
+        "audio_base64": audio_base64,
+        "raw_transcript": "",
+        "cleaned_text": "",
+        "timestamp": datetime.now().isoformat(),
+        "memories": memories,
+        "error": None,
+    }
+
+    # Run through graph
+    try:
+        graph = create_transcription_graph()
+        final_state = await graph.ainvoke(initial_state)
+        
+        if final_state.get("error"):
+            yield VoiceEvent(type=EventType.STT_ERROR, error=final_state["error"])
         else:
-            # Import here to avoid loading Whisper if not needed
-            from faster_whisper import WhisperModel
+            # Return cleaned text (or raw if cleanup disabled)
+            yield VoiceEvent(
+                type=EventType.STT_OUTPUT,
+                data=final_state["cleaned_text"]
+            )
+    except Exception as e:
+        logger.error(f"Pipeline failed: {e}")
+        yield VoiceEvent(type=EventType.STT_ERROR, error=str(e))
 
-            logger.info("Loading local Whisper model...")
-            self.model = WhisperModel("small", device="cpu", compute_type="int8")
-            logger.info("Whisper model loaded")
 
-    def _init_audio(self) -> None:
-        """Initialize audio recording components."""
-        self.sample_rate = SAMPLE_RATE
+def validate_configuration() -> None:
+    """
+    Validate application configuration.
+
+    Checks that all required configuration is present and valid.
+
+    Raises:
+        ConfigurationError: If configuration is invalid
+    """
+    if not OPENAI_API_KEY:
+        raise ConfigurationError(
+            "OPENAI_API_KEY environment variable is required. "
+            "Set it in your .env file or export it."
+        )
+
+    if not OPENAI_API_KEY_PATTERN.match(OPENAI_API_KEY):
+        raise ConfigurationError(
+            "Invalid OPENAI_API_KEY format. "
+            "Expected format: sk-..."
+        )
+
+    # Ensure data directory exists
+    TRANSCRIPTS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    MEMORIES_FILE.parent.mkdir(parents=True, exist_ok=True)
+    SETTINGS_FILE.parent.mkdir(parents=True, exist_ok=True)
+
+    logger.info("Configuration validated successfully")
+
+
+def notify(message: str, duration_ms: int = 1500, persistent: bool = False) -> None:
+    """
+    Send desktop notification.
+
+    Args:
+        message: Notification message text
+        duration_ms: Notification duration in milliseconds (default: 1500)
+        persistent: If True, notification stays until dismissed (default: False)
+    """
+    timeout = "0" if persistent else str(duration_ms)
+    try:
+        subprocess.run(
+            ["notify-send", "-t", timeout, message],
+            stderr=subprocess.DEVNULL,
+            check=False,  # Don't fail if notify-send is not available
+        )
+    except FileNotFoundError:
+        logger.debug("notify-send not available, skipping notification")
+
+
+def type_text(text: str) -> None:
+    """
+    Type text into the active window.
+
+    Attempts to type text using wtype (Wayland) or xdotool (X11).
+    Falls back to copying to clipboard if typing fails.
+
+    Args:
+        text: Text to type
+    """
+    if not text:
+        return
+
+    # Try wtype first (Wayland)
+    try:
+        subprocess.run(
+            ["wtype", text],
+            check=True,
+            stderr=subprocess.DEVNULL,
+            timeout=5,
+        )
+        return
+    except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
+        pass
+
+    # Try xdotool (X11)
+    try:
+        subprocess.run(
+            ["xdotool", "type", "--clearmodifiers", text],
+            check=True,
+            stderr=subprocess.DEVNULL,
+            timeout=5,
+        )
+        return
+    except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
+        pass
+
+    # Fallback: copy to clipboard
+    try:
+        subprocess.run(
+            ["wl-copy", text],
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
+        logger.info("Text copied to clipboard (typing failed)")
+    except FileNotFoundError:
+        logger.warning("No text input method available (wtype, xdotool, or wl-copy)")
+
+
+class VoiceDictationServer:
+    def __init__(self):
+        self._running = True
         self.is_recording = False
-        self.audio_queue: queue.Queue[NDArray[np.float32]] = queue.Queue()
-        self.audio_data: list[NDArray[np.float32]] = []
+        self.audio_queue = queue.Queue()
+        self.audio_data = []
 
-        # Set microphone volume
         subprocess.run(
             ["pactl", "set-source-volume", "@DEFAULT_SOURCE@", "150%"],
             stderr=subprocess.DEVNULL,
         )
 
-        # Initialize audio stream
         self.stream = sd.InputStream(
-            samplerate=self.sample_rate,
+            samplerate=SAMPLE_RATE,
             channels=AUDIO_CHANNELS,
-            dtype=AUDIO_DTYPE,
+            dtype=np.float32,
             callback=self._audio_callback,
         )
         self.stream.start()
 
-    def _audio_callback(
-        self, indata: NDArray[np.float32], frames: int, time_info: object, status: object
-    ) -> None:
-        """Audio stream callback - queues audio data when recording.
+        if os.path.exists(SOCKET_PATH):
+            os.remove(SOCKET_PATH)
 
-        Args:
-            indata: Input audio data.
-            frames: Number of frames.
-            time_info: Time information (unused).
-            status: Stream status (unused).
-        """
-        if self.is_recording:
-            self.audio_queue.put(indata.copy())
+        self.socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        self.socket.bind(SOCKET_PATH)
+        self.socket.listen(1)
+        os.chmod(SOCKET_PATH, 0o666)
 
-    def _init_socket(self) -> None:
-        """Initialize Unix domain socket for IPC.
-
-        Raises:
-            RuntimeError: If socket initialization fails.
-        """
-        self.socket: socket.socket | None = None
-
-        try:
-            # Clean up existing socket
-            if os.path.exists(SOCKET_PATH):
-                os.remove(SOCKET_PATH)
-
-            self.socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-            self.socket.bind(SOCKET_PATH)
-            self.socket.listen(1)
-            os.chmod(SOCKET_PATH, 0o666)
-        except OSError as e:
-            self._cleanup()
-            raise RuntimeError(f"Failed to initialize socket: {e}") from e
-
-    def _setup_signal_handlers(self) -> None:
-        """Setup graceful shutdown signal handlers."""
         signal.signal(signal.SIGINT, self._signal_handler)
         signal.signal(signal.SIGTERM, self._signal_handler)
 
-    def _signal_handler(self, signum: int, frame: object) -> None:
-        """Handle shutdown signals gracefully.
+        logger.info("OmarchyFlow v2 Ready (Whisper + GPT-4o-mini + Memory)")
 
-        Args:
-            signum: Signal number.
-            frame: Current stack frame (unused).
-        """
+    def _audio_callback(self, indata, frames, time_info, status):
+        if self.is_recording:
+            self.audio_queue.put(indata.copy())
+
+    def _signal_handler(self, signum, frame):
         logger.info(f"Received signal {signum}, shutting down...")
         self._running = False
 
-    def _cleanup(self) -> None:
-        """Clean up resources on shutdown."""
-        logger.debug("Cleaning up resources...")
-
+    def _cleanup(self):
         if hasattr(self, "stream"):
             try:
                 self.stream.stop()
                 self.stream.close()
-            except Exception as e:
-                logger.debug(f"Error closing audio stream: {e}")
+            except Exception:
+                pass
 
-        if hasattr(self, "socket") and self.socket:
+        if hasattr(self, "socket"):
             try:
                 self.socket.close()
-            except Exception as e:
-                logger.debug(f"Error closing socket: {e}")
+            except Exception:
+                pass
 
         if os.path.exists(SOCKET_PATH):
             try:
                 os.remove(SOCKET_PATH)
-            except Exception as e:
-                logger.debug(f"Error removing socket file: {e}")
+            except Exception:
+                pass
 
-        # Clean up debug audio file
-        if os.path.exists(DEBUG_AUDIO_PATH):
-            try:
-                os.remove(DEBUG_AUDIO_PATH)
-            except Exception as e:
-                logger.debug(f"Error removing debug audio: {e}")
-
-    def toggle(self) -> None:
-        """Toggle recording state."""
-        if self.is_recording:
-            self._stop_recording()
-        else:
-            self._start_recording()
-
-    def _start_recording(self) -> None:
-        """Start audio recording."""
+    def _start_recording(self):
         self.is_recording = True
         self.audio_data = []
-        notify("🎤 Recording...", NOTIFY_SHORT)
+        notify("🎤 Recording...", 1000)
         logger.info("Recording started")
 
-    def _stop_recording(self) -> None:
-        """Stop recording and initiate transcription."""
+    def _stop_recording(self):
         self.is_recording = False
-        notify("⏹️ Stopping...", NOTIFY_SHORT)
+        notify("⏹️ Processing...", 1000)
 
-        # Small delay to capture trailing audio
-        time.sleep(0.1)
+        import time
+        time.sleep(0.15)
 
-        # Drain audio queue
         while not self.audio_queue.empty():
             self.audio_data.append(self.audio_queue.get())
 
         if self.audio_data:
-            threading.Thread(target=self._transcribe, daemon=True).start()
+            asyncio.run(self._process_recording())
 
         logger.info("Recording stopped")
 
-    def _audio_to_base64(self, audio_array: NDArray[np.float32]) -> str:
-        """Convert audio array to base64-encoded WAV.
-
-        Args:
-            audio_array: Normalized float32 audio array.
-
-        Returns:
-            Base64-encoded WAV data.
-        """
-        audio_int16 = (audio_array * INT16_MAX).astype(np.int16)
-
-        buffer = io.BytesIO()
-        with wave.open(buffer, "wb") as wav_file:
-            wav_file.setnchannels(AUDIO_CHANNELS)
-            wav_file.setsampwidth(AUDIO_SAMPLE_WIDTH)
-            wav_file.setframerate(self.sample_rate)
-            wav_file.writeframes(audio_int16.tobytes())
-
-        buffer.seek(0)
-        return base64.b64encode(buffer.read()).decode("utf-8")
-
-    def _normalize_audio(self, audio_array: NDArray[np.float32]) -> NDArray[np.float32]:
-        """Normalize audio to target peak level.
-
-        Args:
-            audio_array: Input audio array.
-
-        Returns:
-            Normalized audio array.
-        """
-        max_val = np.max(np.abs(audio_array))
-        if max_val > 0:
-            return audio_array / max_val * NORMALIZATION_TARGET
-        return audio_array
-
-    def _save_audio_debug(self, audio_array: NDArray[np.float32]) -> None:
-        """Save audio to file for debugging.
-
-        Args:
-            audio_array: Audio array to save.
-        """
-        if not DEBUG_MODE:
-            return
-
-        audio_int16 = (audio_array * INT16_MAX).astype(np.int16)
-
-        with wave.open(DEBUG_AUDIO_PATH, "wb") as wav_file:
-            wav_file.setnchannels(AUDIO_CHANNELS)
-            wav_file.setsampwidth(AUDIO_SAMPLE_WIDTH)
-            wav_file.setframerate(self.sample_rate)
-            wav_file.writeframes(audio_int16.tobytes())
-
-        logger.debug(f"Saved debug audio to {DEBUG_AUDIO_PATH}")
-
-    def _strip_preambles(self, text: str) -> str:
-        """Strip common LLM preambles from transcription.
-
-        Args:
-            text: Raw transcription text.
-
-        Returns:
-            Cleaned text without preambles.
-        """
-        text = text.strip()
-        text_lower = text.lower()
-
-        for preamble in TRANSCRIPTION_PREAMBLES:
-            if text_lower.startswith(preamble):
-                text = text[len(preamble) :].strip()
-                text_lower = text.lower()
-
-        return text.lstrip("\n").strip()
-
-    def _transcribe_with_openai_direct(
-        self, audio_array: NDArray[np.float32]
-    ) -> str | None:
-        """Transcribe audio using OpenAI's direct audio API.
-
-        Args:
-            audio_array: Normalized audio array.
-
-        Returns:
-            Transcribed text or None on failure.
-        """
-        try:
-            audio_base64 = self._audio_to_base64(audio_array)
-
-            response = httpx.post(
-                "https://api.openai.com/v1/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {OPENAI_API_KEY}",
-                    "Content-Type": "application/json",
-                },
-                json={
-                    "model": "gpt-4o-audio-preview",
-                    "modalities": ["text"],
-                    "messages": [
-                        {
-                            "role": "user",
-                            "content": [
-                                {"type": "text", "text": "Transcribe."},
-                                {
-                                    "type": "input_audio",
-                                    "input_audio": {"data": audio_base64, "format": "wav"},
-                                },
-                            ],
-                        }
-                    ],
-                },
-                timeout=API_TIMEOUT,
-            )
-
-            if response.status_code == 200:
-                result = response.json()
-                text = result["choices"][0]["message"]["content"]
-                if text:
-                    return self._strip_preambles(text)
-                logger.warning("OpenAI returned empty content")
-                return None
-
-            logger.error(f"OpenAI API failed: {response.status_code} - {response.text}")
-            return None
-
-        except httpx.TimeoutException:
-            logger.error("OpenAI API timeout")
-            return None
-        except Exception as e:
-            logger.error(f"OpenAI Direct error: {e}")
-            return None
-
-    def _transcribe_with_gemini(self, audio_array: NDArray[np.float32]) -> str | None:
-        """Transcribe audio using Gemini via OpenRouter.
-
-        Args:
-            audio_array: Normalized audio array.
-
-        Returns:
-            Transcribed text or None on failure.
-        """
-        try:
-            audio_base64 = self._audio_to_base64(audio_array)
-
-            response = httpx.post(
-                "https://openrouter.ai/api/v1/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-                    "Content-Type": "application/json",
-                },
-                json={
-                    "model": "google/gemini-2.5-flash",
-                    "messages": [
-                        {
-                            "role": "user",
-                            "content": [
-                                {"type": "text", "text": "Transcribe."},
-                                {
-                                    "type": "input_audio",
-                                    "input_audio": {"data": audio_base64, "format": "wav"},
-                                },
-                            ],
-                        }
-                    ],
-                },
-                timeout=API_TIMEOUT,
-            )
-
-            if response.status_code == 200:
-                result = response.json()
-                text = result["choices"][0]["message"]["content"]
-                if text:
-                    return text.strip()
-                logger.warning("Gemini returned empty content")
-                return None
-
-            logger.error(f"Gemini API failed: {response.status_code} - {response.text}")
-            return None
-
-        except httpx.TimeoutException:
-            logger.error("Gemini API timeout")
-            return None
-        except Exception as e:
-            logger.error(f"Gemini error: {e}")
-            return None
-
-    def _transcribe_with_audio_llm(self, audio_array: NDArray[np.float32]) -> str | None:
-        """Transcribe audio using Voxtral via OpenRouter.
-
-        Args:
-            audio_array: Normalized audio array.
-
-        Returns:
-            Transcribed text or None on failure.
-        """
-        try:
-            duration = len(audio_array) / self.sample_rate
-            logger.debug(f"Audio duration: {duration:.2f}s")
-
-            audio_base64 = self._audio_to_base64(audio_array)
-            logger.debug(f"Base64 length: {len(audio_base64)}")
-
-            response = httpx.post(
-                "https://openrouter.ai/api/v1/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-                    "Content-Type": "application/json",
-                },
-                json={
-                    "model": "mistralai/voxtral-small-24b-2507",
-                    "messages": [
-                        {
-                            "role": "system",
-                            "content": (
-                                "You are a transcription system. Output ONLY the transcribed "
-                                "text. No preambles. No commentary. No explanations. "
-                                "Just the cleaned text."
-                            ),
-                        },
-                        {
-                            "role": "user",
-                            "content": [
-                                {
-                                    "type": "text",
-                                    "text": (
-                                        "Transcribe the following audio clip. Output only the "
-                                        "spoken words with proper punctuation and capitalization. "
-                                        "Remove filler words like um, uh, and like."
-                                    ),
-                                },
-                                {
-                                    "type": "input_audio",
-                                    "inputAudio": {"data": audio_base64, "format": "wav"},
-                                },
-                            ],
-                        },
-                    ],
-                },
-                timeout=API_TIMEOUT,
-            )
-
-            if response.status_code == 200:
-                return response.json()["choices"][0]["message"]["content"].strip()
-
-            logger.error(f"Audio LLM failed: {response.status_code} - {response.text}")
-            return None
-
-        except httpx.TimeoutException:
-            logger.error("Audio LLM timeout")
-            return None
-        except Exception as e:
-            logger.error(f"Audio LLM error: {e}")
-            return None
-
-    def _clean_with_llm(self, raw_text: str) -> str:
-        """Clean raw transcription using LLM.
-
-        Args:
-            raw_text: Raw transcription from Whisper.
-
-        Returns:
-            Cleaned and formatted text.
-        """
-        if not OPENROUTER_API_KEY:
-            return raw_text
-
-        try:
-            response = httpx.post(
-                "https://openrouter.ai/api/v1/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-                    "Content-Type": "application/json",
-                },
-                json={
-                    "model": "google/gemini-2.5-flash",
-                    "messages": [
-                        {
-                            "role": "system",
-                            "content": (
-                                "You are a transcription system. Output ONLY the transcribed "
-                                "text. No preambles. No commentary. No explanations. "
-                                "Just the cleaned text."
-                            ),
-                        },
-                        {
-                            "role": "user",
-                            "content": f"""This is raw voice-to-text transcription that needs cleanup and formatting.
-
-Instructions:
-- Fix grammar, punctuation, and capitalization
-- Remove filler words (um, uh, like, you know, etc.)
-- If the speaker mentions multiple points using words like "first", "second", "third" OR "one", "two", "three", format them as a numbered list using "1.", "2.", "3." format
-- If there are bullet points or lists mentioned, format them properly
-- Keep the meaning intact
-- Return ONLY the cleaned and formatted text, nothing else
-
-Raw transcription: {raw_text}""",
-                        },
-                    ],
-                },
-                timeout=CLEANUP_TIMEOUT,
-            )
-
-            if response.status_code == 200:
-                return response.json()["choices"][0]["message"]["content"].strip()
-            return raw_text
-
-        except Exception as e:
-            logger.warning(f"LLM cleanup failed: {e}")
-            return raw_text
-
-    def _type_text(self, text: str) -> None:
-        """Type text into the active window using available tools.
-
-        Tries wtype (Wayland), then xdotool (X11), then clipboard as fallback.
-
-        Args:
-            text: Text to type.
-        """
-        try:
-            subprocess.run(["wtype", text], check=True, stderr=subprocess.DEVNULL)
-            return
-        except (subprocess.CalledProcessError, FileNotFoundError):
-            pass
-
-        try:
-            subprocess.run(
-                ["xdotool", "type", "--clearmodifiers", text],
-                check=True,
-                stderr=subprocess.DEVNULL,
-            )
-            return
-        except (subprocess.CalledProcessError, FileNotFoundError):
-            pass
-
-        # Fallback to clipboard
-        subprocess.run(["wl-copy", text], stderr=subprocess.DEVNULL)
-        logger.info("Text copied to clipboard (wtype/xdotool unavailable)")
-
-    def _transcribe(self) -> None:
-        """Transcribe recorded audio and type the result."""
+    async def _process_recording(self):
         audio = np.concatenate(self.audio_data, axis=0).flatten()
-        audio = self._normalize_audio(audio)
 
-        self._save_audio_debug(audio)
+        notify("🎙️ Transcribing...", 1500)
 
-        text: str | None = None
+        async for event in process_audio_with_graph(audio):
+            if event.type == EventType.STT_OUTPUT:
+                text = event.data
+                
+                # Always type the text
+                type_text(text)
+                
+                if DEBUG_MODE:
+                    # Show detailed info in debug mode
+                    display_text = text[:200] + "..." if len(text) > 200 else text
+                    notify(f"✓ {display_text}", 3000)
+                else:
+                    display_text = text[:50] + "..." if len(text) > 50 else text
+                    notify(f"✓ {display_text}", 2000)
 
-        if USE_OPENAI_DIRECT:
-            notify("🎙️ Transcribing with OpenAI...", NOTIFY_MEDIUM)
-            text = self._transcribe_with_openai_direct(audio)
-        elif USE_OPENROUTER_GEMINI:
-            notify("🎵 Transcribing with Gemini...", NOTIFY_MEDIUM)
-            text = self._transcribe_with_gemini(audio)
-        elif USE_AUDIO_DIRECT:
-            notify("🎵 Processing audio with LLM...", NOTIFY_MEDIUM)
-            text = self._transcribe_with_audio_llm(audio)
-        else:
-            # Local Whisper
-            if self.model is None:
-                logger.error("Whisper model not loaded")
-                notify("❌ Whisper model not loaded", NOTIFY_LONG)
-                return
+            elif event.type == EventType.STT_ERROR:
+                notify(f"❌ {event.error}", 2000)
+                logger.error(f"Transcription error: {event.error}")
 
-            segments, _ = self.model.transcribe(
-                audio, language="en", beam_size=5, vad_filter=True
-            )
-            raw_text = " ".join([s.text for s in segments]).strip()
-
-            if not raw_text:
-                logger.info("No speech detected")
-                return
-
-            notify("🧹 Cleaning text...", NOTIFY_MEDIUM)
-            text = self._clean_with_llm(raw_text)
-
-        if not text:
-            notify("❌ Transcription failed", NOTIFY_LONG)
-            return
-
-        self._type_text(text)
-
-        # Truncate for notification
-        display_text = text[:50] + "..." if len(text) > 50 else text
-        notify(f"✓ {display_text}", NOTIFY_LONG)
-        logger.info(f"Transcribed: {text}")
-
-    def run(self) -> None:
-        """Main server loop - accept socket connections and handle commands."""
-        if self.socket is None:
-            raise RuntimeError("Socket not initialized")
-
+    def run(self):
         try:
             while self._running:
                 try:
-                    # Use timeout to allow checking _running flag
                     self.socket.settimeout(1.0)
                     conn, _ = self.socket.accept()
                 except socket.timeout:
@@ -722,33 +824,35 @@ Raw transcription: {raw_text}""",
 
                 try:
                     cmd = conn.recv(1024).decode().strip()
-                    logger.debug(f"Received command: {cmd}")
+                    logger.debug(f"Command: {cmd}")
 
-                    if cmd == "start":
-                        if not self.is_recording:
-                            self._start_recording()
-                    elif cmd == "stop":
+                    if cmd == "start" and not self.is_recording:
+                        self._start_recording()
+                    elif cmd == "stop" and self.is_recording:
+                        self._stop_recording()
+                    elif cmd == "toggle":
                         if self.is_recording:
                             self._stop_recording()
-                    elif cmd == "toggle":
-                        self.toggle()
-                    else:
-                        logger.warning(f"Unknown command: {cmd}")
+                        else:
+                            self._start_recording()
                 finally:
                     conn.close()
-
         finally:
             self._cleanup()
 
 
 def main() -> None:
-    """Main entry point."""
+    """
+    Main entry point for OmarchyFlow.
+
+    If called with a command (start/stop/toggle), sends the command to the running server.
+    Otherwise, starts the voice dictation server.
+    """
     if len(sys.argv) > 1:
-        # Client mode - send command to server
         cmd = sys.argv[1]
         if cmd not in ("start", "stop", "toggle"):
-            print(f"Unknown command: {cmd}")
-            print("Usage: omarchyflow [start|stop|toggle]")
+            print(f"Unknown command: {cmd}", file=sys.stderr)
+            print("Usage: omarchyflow [start|stop|toggle]", file=sys.stderr)
             sys.exit(1)
 
         try:
@@ -757,13 +861,27 @@ def main() -> None:
             s.send(cmd.encode())
             s.close()
         except (ConnectionRefusedError, FileNotFoundError, OSError) as e:
-            print(f"Server not running. Start with: ./omarchyflow")
-            logger.debug(f"Connection error: {e}")
+            print(
+                f"Server not running: {e}\n"
+                "Start the server with: ./omarchyflow",
+                file=sys.stderr
+            )
             sys.exit(1)
     else:
-        # Server mode
-        validate_configuration()
-        VoiceDictation().run()
+        try:
+            validate_configuration()
+        except ConfigurationError as e:
+            print(f"Configuration error: {e}", file=sys.stderr)
+            sys.exit(1)
+
+        try:
+            VoiceDictationServer().run()
+        except KeyboardInterrupt:
+            logger.info("Shutting down...")
+            sys.exit(0)
+        except Exception as e:
+            logger.error(f"Fatal error: {e}", exc_info=True)
+            sys.exit(1)
 
 
 if __name__ == "__main__":

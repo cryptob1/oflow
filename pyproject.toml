@@ -1,21 +1,51 @@
 [project]
 name = "omarchyflow"
-version = "0.1.0"
-description = "Local voice dictation for Omarchy (Hyprland/Wayland) - A WhisperFlow/Willow alternative supporting OpenAI & Gemini direct audio APIs"
+version = "0.2.0"
+description = "Robust voice dictation for Hyprland/Wayland built with LangChain architecture"
+readme = "README.md"
+license = { file = "LICENSE" }
+authors = [
+    { name = "CryptoB1", email = "cryptob1@users.noreply.github.com" }
+]
+maintainers = [
+    { name = "CryptoB1", email = "cryptob1@users.noreply.github.com" }
+]
+keywords = ["voice", "dictation", "hyprland", "wayland", "stt", "speech-to-text", "langchain"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Multimedia :: Sound/Audio :: Speech",
+    "Topic :: Text Processing",
+]
 requires-python = ">=3.13"
 dependencies = [
-    "faster-whisper>=1.0.0",
     "sounddevice>=0.4.6",
     "numpy>=1.24.0",
     "httpx>=0.27.0",
     "python-dotenv>=1.0.0",
+    "langchain-core>=0.3.0",
+    "langchain-openai>=0.1.0",
+    "langgraph>=0.0.1",
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0.0",
     "pytest-cov>=4.0.0",
+    "ruff>=0.7.0",
+    "pyinstaller>=6.3.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/CryptoB1/omarchyflow"
+Repository = "https://github.com/CryptoB1/omarchyflow"
+Issues = "https://github.com/CryptoB1/omarchyflow/issues"
+Discussions = "https://github.com/CryptoB1/omarchyflow/discussions"
+Changelog = "https://github.com/CryptoB1/omarchyflow/blob/master/CHANGELOG.md"
 
 [project.scripts]
 omarchyflow = "omarchyflow:main"
@@ -28,11 +58,25 @@ build-backend = "hatchling.build"
 only-include = ["omarchyflow.py"]
 
 [tool.hatch.build.targets.sdist]
-only-include = ["omarchyflow.py", "test_suite.py", "README.md", "LICENSE", ".env.example"]
+only-include = [
+    "omarchyflow.py",
+    "tests",
+    "docs",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md",
+    "CONTRIBUTING.md",
+    "CODE_OF_CONDUCT.md",
+    ".env.example",
+    "setup.sh",
+    "Makefile",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
 
 [tool.ruff]
 line-length = 100
@@ -41,3 +85,12 @@ target-version = "py313"
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "C4", "UP"]
 ignore = ["E501"]
+
+[tool.coverage.run]
+source = ["omarchyflow"]
+omit = ["tests/*", ".venv/*"]
+
+[tool.coverage.report]
+precision = 2
+show_missing = true
+skip_covered = false

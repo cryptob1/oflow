@@ -1,42 +1,43 @@
-# OmarchyFlow Makefile
-# Simple commands for running and testing
+.PHONY: help run stop test format lint clean install
 
-.PHONY: help install run start stop test clean
+help:
+	@echo "OmarchyFlow - Voice Dictation for Hyprland/Wayland"
+	@echo ""
+	@echo "Available targets:"
+	@echo "  make run      - Start the voice dictation server"
+	@echo "  make stop     - Stop the voice dictation server"
+	@echo "  make test     - Run test suite"
+	@echo "  make format   - Format code with ruff"
+	@echo "  make lint     - Lint code with ruff"
+	@echo "  make install  - Run setup script"
+	@echo "  make clean    - Remove cache files"
 
-PYTHON := .venv/bin/python
-SCRIPT := omarchyflow.py
+run:
+	@echo "Starting OmarchyFlow..."
+	@./omarchyflow &
 
-help: ## Show this help
-	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-15s\033[0m %s\n", $$1, $$2}'
+stop:
+	@echo "Stopping OmarchyFlow..."
+	@pkill -f omarchyflow || true
 
-install: ## Run setup script
+test:
+	@echo "Running tests..."
+	@python tests/test_robustness.py
+
+format:
+	@echo "Formatting code..."
+	@ruff format .
+
+lint:
+	@echo "Linting code..."
+	@ruff check .
+
+install:
 	@./setup.sh
 
-run: ## Start the voice dictation server
-	@$(PYTHON) $(SCRIPT)
-
-start: ## Send start command to running server
-	@$(PYTHON) $(SCRIPT) start
-
-stop: ## Send stop command to running server
-	@$(PYTHON) $(SCRIPT) stop
-
-toggle: ## Send toggle command to running server
-	@$(PYTHON) $(SCRIPT) toggle
-
-test: ## Run the test suite
-	@$(PYTHON) test_suite.py
-
-clean: ## Remove generated files
-	@rm -rf .venv __pycache__ *.pyc /tmp/voice-dictation.sock /tmp/debug_audio.wav
-	@echo "Cleaned up"
-
-logs: ## View server logs (if using systemd)
-	@journalctl --user -u omarchyflow.service -f
-
-status: ## Check if server is running
-	@if [ -S /tmp/voice-dictation.sock ]; then \
-		echo "✓ Server is running"; \
-	else \
-		echo "✗ Server is not running"; \
-	fi
+clean:
+	@echo "Cleaning cache files..."
+	@rm -rf __pycache__ .pytest_cache .ruff_cache .coverage htmlcov
+	@find . -type d -name "*.egg-info" -exec rm -rf {} + 2>/dev/null || true
+	@find . -type f -name "*.pyc" -delete
+	@echo "Clean complete"
