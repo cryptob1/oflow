@@ -1,4 +1,4 @@
-# OmarchyFlow
+# Oflow
 
 > **Robust voice dictation for Hyprland/Wayland** - Built with LangChain architecture for reliability
 
@@ -20,8 +20,8 @@
 ## Quick Start
 
 ```bash
-git clone https://github.com/CryptoB1/omarchyflow.git
-cd omarchyflow
+git clone https://github.com/CryptoB1/oflow.git
+cd oflow
 ./setup.sh    # Installs dependencies and configures API keys
 make run      # Start the server
 ```
@@ -76,8 +76,8 @@ cp .env.example .env
 # Edit .env and add your API key
 
 # 5. Setup Hyprland keybindings
-echo 'bind = SUPER, I, exec, /path/to/omarchyflow/omarchyflow start' >> ~/.config/hypr/bindings.conf
-echo 'bindr = SUPER, I, exec, /path/to/omarchyflow/omarchyflow stop' >> ~/.config/hypr/bindings.conf
+echo 'bind = SUPER, I, exec, /path/to/oflow/oflow start' >> ~/.config/hypr/bindings.conf
+echo 'bindr = SUPER, I, exec, /path/to/oflow/oflow stop' >> ~/.config/hypr/bindings.conf
 hyprctl reload
 ```
 
@@ -108,11 +108,11 @@ DEBUG_MODE=false                # Enable debug logging
 make run
 
 # Method 2: Direct execution
-./omarchyflow
+./oflow
 
 # Method 3: With systemd (auto-start on boot)
-sudo cp omarchyflow.service /etc/systemd/system/
-sudo systemctl enable --now omarchyflow
+sudo cp oflow.service /etc/systemd/system/
+sudo systemctl enable --now oflow
 ```
 
 ### Voice Dictation
@@ -132,7 +132,7 @@ sudo systemctl enable --now omarchyflow
 
 ## Architecture
 
-OmarchyFlow uses the **"Sandwich Architecture"** from [LangChain's voice agent guide](https://docs.langchain.com/oss/python/langchain/voice-agent):
+Oflow uses the **"Sandwich Architecture"** from [LangChain's voice agent guide](https://docs.langchain.com/oss/python/langchain/voice-agent):
 
 ```
 Audio Recording
@@ -183,7 +183,7 @@ python tests/test_robustness.py
 Expected output:
 ```
 ============================================================
-OmarchyFlow LangChain Robustness Tests
+Oflow LangChain Robustness Tests
 ============================================================
 
 ✅ Empty audio correctly rejected
@@ -203,7 +203,7 @@ Results: 8 passed, 0 failed
 uv pip install -e .[dev]
 
 # Run tests with coverage
-pytest --cov=omarchyflow tests/
+pytest --cov=oflow tests/
 
 # Format code
 ruff format .
@@ -218,11 +218,11 @@ ruff check .
 
 ```bash
 # Check if server is running
-ps aux | grep omarchyflow
+ps aux | grep oflow
 
 # View logs
-journalctl -u omarchyflow -f  # If using systemd
-tail -f /tmp/omarchyflow.log  # If run manually
+journalctl -u oflow -f  # If using systemd
+tail -f /tmp/oflow.log  # If run manually
 ```
 
 ### "Transcription Failed" Errors
@@ -243,21 +243,21 @@ pactl set-source-volume @DEFAULT_SOURCE@ 200%
 
 ```bash
 # Verify Hyprland config was updated
-grep -i "omarchyflow" ~/.config/hypr/bindings.conf
+grep -i "oflow" ~/.config/hypr/bindings.conf
 
 # Reload Hyprland config
 hyprctl reload
 
 # Test manually
-./omarchyflow start
+./oflow start
 # Speak something
-./omarchyflow stop
+./oflow stop
 ```
 
 ## Project Structure
 
 ```
-omarchyflow/
+oflow/
 ├── docs/               # Documentation
 │   ├── architecture.md    # LangChain architecture details
 │   ├── gemini-integration.md  # Gemini provider documentation
@@ -268,7 +268,7 @@ omarchyflow/
 ├── .github/
 │   └── workflows/
 │       └── ci.yml         # CI/CD pipeline
-├── omarchyflow         # Main executable
+├── oflow         # Main executable
 ├── setup.sh            # Installation script
 ├── Makefile            # Build automation
 ├── pyproject.toml      # Python project metadata
@@ -304,9 +304,9 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## Links
 
-- **GitHub**: https://github.com/CryptoB1/omarchyflow
-- **Issues**: https://github.com/CryptoB1/omarchyflow/issues
-- **Discussions**: https://github.com/CryptoB1/omarchyflow/discussions
+- **GitHub**: https://github.com/CryptoB1/oflow
+- **Issues**: https://github.com/CryptoB1/oflow/issues
+- **Discussions**: https://github.com/CryptoB1/oflow/discussions
 
 ---
 

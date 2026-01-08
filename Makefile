@@ -1,7 +1,7 @@
 .PHONY: help run stop test format lint clean install
 
 help:
-	@echo "OmarchyFlow - Voice Dictation for Hyprland/Wayland"
+	@echo "Oflow - Voice Dictation for Hyprland/Wayland"
 	@echo ""
 	@echo "Available targets:"
 	@echo "  make run      - Start the voice dictation server"
@@ -13,12 +13,12 @@ help:
 	@echo "  make clean    - Remove cache files"
 
 run:
-	@echo "Starting OmarchyFlow..."
-	@./omarchyflow &
+	@echo "Starting Oflow..."
+	@./oflow &
 
 stop:
-	@echo "Stopping OmarchyFlow..."
-	@pkill -f omarchyflow || true
+	@echo "Stopping Oflow..."
+	@pkill -f oflow || true
 
 test:
 	@echo "Running tests..."

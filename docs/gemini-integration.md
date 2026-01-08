@@ -1,8 +1,8 @@
-# Gemini Integration for OmarchyFlow
+# Gemini Integration for Oflow
 
 ## Summary
 
-Successfully added **Gemini 2.5 Flash via OpenRouter** as an alternative transcription backend to OmarchyFlow.
+Successfully added **Gemini 2.5 Flash via OpenRouter** as an alternative transcription backend to Oflow.
 
 ## Test Results
 
@@ -120,7 +120,7 @@ During development, we tested multiple models via OpenRouter:
 
 ### Start with OpenAI (default)
 ```bash
-python omarchyflow.py &
+python oflow.py &
 ```
 
 ### Start with Gemini
@@ -130,7 +130,7 @@ USE_OPENAI_DIRECT=false
 USE_OPENROUTER_GEMINI=true
 
 # Restart server
-python omarchyflow.py &
+python oflow.py &
 ```
 
 ### Test
@@ -141,7 +141,7 @@ The notification will show:
 - Gemini: "🎵 Transcribing with Gemini..."
 
 ## Files Modified
-- `omarchyflow.py`: Added `USE_OPENROUTER_GEMINI` flag and `transcribe_with_gemini()` function
+- `oflow.py`: Added `USE_OPENROUTER_GEMINI` flag and `transcribe_with_gemini()` function
 - `.env.example`: Added `OPENROUTER_API_KEY` and `USE_OPENROUTER_GEMINI` options
 - `README.md`: Updated features, requirements, configuration, and cost breakdown
 

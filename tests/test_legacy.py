@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Test suite for OmarchyFlow voice transcription.
+Test suite for Oflow voice transcription.
 
 Tests the TTS → Transcription pipeline using OpenAI's APIs.
 Generates audio via TTS and verifies transcription accuracy.

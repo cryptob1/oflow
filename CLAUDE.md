@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-OmarchyFlow is a voice dictation system for Hyprland/Wayland. It records audio via global hotkey (Super+I), transcribes it using OpenAI Whisper, optionally cleans it with GPT-4o-mini, and types the result into the active window using wtype.
+Oflow is a voice dictation system for Hyprland/Wayland. It records audio via global hotkey (Super+I), transcribes it using OpenAI Whisper, optionally cleans it with GPT-4o-mini, and types the result into the active window using wtype.
 
 ## Common Commands
 
@@ -31,7 +31,7 @@ ruff check .
 uv pip install -e .[dev]
 
 # Run tests with coverage
-pytest --cov=omarchyflow tests/
+pytest --cov=oflow tests/
 ```
 
 ## Architecture
@@ -43,7 +43,7 @@ Audio Recording → Audio Validation → Whisper STT → GPT-4o-mini Cleanup →
 ```
 
 ### Single-file structure
-All core logic is in `omarchyflow.py`:
+All core logic is in `oflow.py`:
 - `AudioValidator` - validates audio before API calls (duration, amplitude checks)
 - `AudioProcessor` - normalizes audio and converts to base64 WAV
 - `WhisperAPI` - OpenAI Whisper transcription client
@@ -64,9 +64,9 @@ The pipeline is defined in `create_transcription_graph()`:
 - Hyprland binds Super+I press/release to start/stop commands
 
 ### Data storage
-- Transcripts: `~/.omarchyflow/transcripts.jsonl`
-- Memories: `~/.omarchyflow/memories.json`
-- Settings: `~/.omarchyflow/settings.json`
+- Transcripts: `~/.oflow/transcripts.jsonl`
+- Memories: `~/.oflow/memories.json`
+- Settings: `~/.oflow/settings.json`
 
 ## Configuration
 

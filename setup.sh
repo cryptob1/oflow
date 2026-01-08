@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# OmarchyFlow Setup Script
+# Oflow Setup Script
 # Automates installation of dependencies and configuration
 #
 set -euo pipefail
@@ -22,7 +22,7 @@ cd "$SCRIPT_DIR"
 
 echo -e "${BLUE}"
 echo "╔═══════════════════════════════════════╗"
-echo "║       OmarchyFlow Setup Script        ║"
+echo "║       Oflow Setup Script        ║"
 echo "╚═══════════════════════════════════════╝"
 echo -e "${NC}"
 
@@ -158,8 +158,8 @@ fi
 echo ""
 print_status "Hyprland keybinding setup..."
 
-HYPR_BINDING="bind = SUPER, I, exec, $SCRIPT_DIR/.venv/bin/python $SCRIPT_DIR/omarchyflow.py start
-bindr = SUPER, I, exec, $SCRIPT_DIR/.venv/bin/python $SCRIPT_DIR/omarchyflow.py stop"
+HYPR_BINDING="bind = SUPER, I, exec, $SCRIPT_DIR/.venv/bin/python $SCRIPT_DIR/oflow.py start
+bindr = SUPER, I, exec, $SCRIPT_DIR/.venv/bin/python $SCRIPT_DIR/oflow.py stop"
 
 echo ""
 echo "Add these lines to ~/.config/hypr/bindings.conf:"
@@ -169,14 +169,14 @@ echo ""
 
 BINDINGS_FILE="$HOME/.config/hypr/bindings.conf"
 if [[ -f "$BINDINGS_FILE" ]]; then
-    if grep -q "omarchyflow" "$BINDINGS_FILE"; then
+    if grep -q "oflow" "$BINDINGS_FILE"; then
         print_success "Keybindings already configured"
     else
         read -p "Add keybindings automatically? [y/N] " -n 1 -r
         echo
         if [[ $REPLY =~ ^[Yy]$ ]]; then
             echo "" >> "$BINDINGS_FILE"
-            echo "# OmarchyFlow voice dictation" >> "$BINDINGS_FILE"
+            echo "# Oflow voice dictation" >> "$BINDINGS_FILE"
             echo "$HYPR_BINDING" >> "$BINDINGS_FILE"
             print_success "Keybindings added to $BINDINGS_FILE"
             print_warning "Run 'hyprctl reload' to apply"
@@ -197,7 +197,7 @@ echo -e "${GREEN}╚════════════════════
 echo ""
 echo "Quick start:"
 echo -e "  ${BLUE}source .venv/bin/activate${NC}"
-echo -e "  ${BLUE}python omarchyflow.py${NC}        # Start server"
+echo -e "  ${BLUE}python oflow.py${NC}        # Start server"
 echo ""
 echo "Or use the Makefile:"
 echo -e "  ${BLUE}make run${NC}                     # Start server"

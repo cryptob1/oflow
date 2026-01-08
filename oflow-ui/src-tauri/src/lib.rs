@@ -116,7 +116,7 @@ fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
     use tauri::tray::{TrayIconBuilder, TrayIconEvent};
 
     TrayIconBuilder::new()
-        .tooltip("OmarchyFlow")
+        .tooltip("Oflow")
         .icon(
             app.default_window_icon()
                 .ok_or("Failed to get default icon")?
@@ -197,7 +197,7 @@ pub fn run() {
             tauri::async_runtime::spawn(async move {
                 match handle
                     .shell()
-                    .sidecar("omarchyflow-backend")
+                    .sidecar("oflow-backend")
                     .map_err(|e| format!("Failed to create sidecar: {}", e))
                 {
                     Ok(sidecar) => {

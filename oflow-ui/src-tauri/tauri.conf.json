@@ -1,8 +1,8 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
-  "productName": "omarchyflow",
+  "productName": "oflow",
   "version": "0.1.0",
-  "identifier": "com.omarchyflow.app",
+  "identifier": "com.oflow.app",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:1420",
@@ -13,7 +13,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "OmarchyFlow",
+        "title": "Oflow",
         "width": 800,
         "height": 600,
         "resizable": true,
@@ -37,7 +37,7 @@
       "icons/icon.ico"
     ],
     "externalBin": [
-      "binaries/omarchyflow-backend"
+      "binaries/oflow-backend"
     ]
   }
 }

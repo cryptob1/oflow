@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-OmarchyFlow v2 - WhisperFlow-inspired voice dictation with memory.
+Oflow v2 - WhisperFlow-inspired voice dictation with memory.
 
 A production-ready voice dictation system that records audio, transcribes it using
 OpenAI's Whisper API, cleans it up with GPT-4o-mini, and types it into the active window.
@@ -72,9 +72,9 @@ API_TIMEOUT_SECONDS = 15.0  # Timeout for API requests
 MAX_RETRIES = 3  # Maximum retry attempts for API calls
 
 # File paths
-TRANSCRIPTS_FILE = Path.home() / ".omarchyflow" / "transcripts.jsonl"
-MEMORIES_FILE = Path.home() / ".omarchyflow" / "memories.json"
-SETTINGS_FILE = Path.home() / ".omarchyflow" / "settings.json"
+TRANSCRIPTS_FILE = Path.home() / ".oflow" / "transcripts.jsonl"
+MEMORIES_FILE = Path.home() / ".oflow" / "memories.json"
+SETTINGS_FILE = Path.home() / ".oflow" / "settings.json"
 
 # Memory system configuration
 MEMORY_BUILD_THRESHOLD = 1000  # Build memories every N transcripts
@@ -97,11 +97,11 @@ DEFAULT_ENABLE_MEMORY = os.getenv("ENABLE_MEMORY", "false").lower() == "true"
 
 def load_settings() -> dict:
     """
-    Load settings from ~/.omarchyflow/settings.json.
+    Load settings from ~/.oflow/settings.json.
     Falls back to environment variable defaults if file doesn't exist.
 
     Returns:
-        dict with 'enableCleanup' and 'enableMemory' keys
+        dict with 'enableCleanup', 'enableMemory', and 'openaiApiKey' keys
     """
     try:
         if SETTINGS_FILE.exists():
@@ -110,6 +110,7 @@ def load_settings() -> dict:
                 return {
                     'enableCleanup': settings.get('enableCleanup', DEFAULT_ENABLE_CLEANUP),
                     'enableMemory': settings.get('enableMemory', DEFAULT_ENABLE_MEMORY),
+                    'openaiApiKey': settings.get('openaiApiKey') or OPENAI_API_KEY,
                 }
     except Exception as e:
         logger.warning(f"Failed to load settings from {SETTINGS_FILE}: {e}")
@@ -117,6 +118,7 @@ def load_settings() -> dict:
     return {
         'enableCleanup': DEFAULT_ENABLE_CLEANUP,
         'enableMemory': DEFAULT_ENABLE_MEMORY,
+        'openaiApiKey': OPENAI_API_KEY,
     }
 
 
@@ -124,27 +126,27 @@ def load_settings() -> dict:
 # Custom Exceptions
 # ============================================================================
 
-class OmarchyFlowError(Exception):
-    """Base exception for OmarchyFlow errors."""
+class OflowError(Exception):
+    """Base exception for Oflow errors."""
     pass
 
 
-class ConfigurationError(OmarchyFlowError):
+class ConfigurationError(OflowError):
     """Raised when configuration is invalid."""
     pass
 
 
-class AudioValidationError(OmarchyFlowError):
+class AudioValidationError(OflowError):
     """Raised when audio validation fails."""
     pass
 
 
-class TranscriptionError(OmarchyFlowError):
+class TranscriptionError(OflowError):
     """Raised when transcription fails."""
     pass
 
 
-class APIError(OmarchyFlowError):
+class APIError(OflowError):
     """Raised when API calls fail."""
     pass
 
@@ -500,18 +502,19 @@ PATTERNS (output as numbered list):"""
 
 
 # LangGraph Pipeline
-def create_transcription_graph(enable_cleanup: bool = True, enable_memory: bool = False):
+def create_transcription_graph(api_key: str, enable_cleanup: bool = True, enable_memory: bool = False):
     """Create the LangGraph workflow
 
     Args:
+        api_key: OpenAI API key for Whisper and GPT-4o-mini
         enable_cleanup: Whether to use GPT-4o-mini for text cleanup
         enable_memory: Whether to use the memory system for learning patterns
     """
 
-    whisper = WhisperAPI(OPENAI_API_KEY)
-    cleanup_agent = TextCleanupAgent(OPENAI_API_KEY) if enable_cleanup else None
+    whisper = WhisperAPI(api_key)
+    cleanup_agent = TextCleanupAgent(api_key) if enable_cleanup else None
     storage = StorageManager()
-    memory_builder = MemoryBuilder(OPENAI_API_KEY) if enable_memory else None
+    memory_builder = MemoryBuilder(api_key) if enable_memory else None
 
     async def node_whisper(state: TranscriptionState) -> TranscriptionState:
         """Node 1: Transcribe with Whisper"""
@@ -601,15 +604,16 @@ async def process_audio_with_graph(audio: np.ndarray) -> AsyncIterator[VoiceEven
     # Convert to base64
     audio_base64 = AudioProcessor.to_base64_wav(normalized_audio, SAMPLE_RATE)
 
-    if not OPENAI_API_KEY:
-        yield VoiceEvent(type=EventType.STT_ERROR, error="OPENAI_API_KEY not set")
-        return
-
     # Load settings from JSON file (allows UI to control behavior)
     settings = load_settings()
+    api_key = settings['openaiApiKey']
     enable_cleanup = settings['enableCleanup']
     enable_memory = settings['enableMemory']
     logger.debug(f"Settings: cleanup={enable_cleanup}, memory={enable_memory}")
+
+    if not api_key:
+        yield VoiceEvent(type=EventType.STT_ERROR, error="OpenAI API key not set. Configure it in Settings.")
+        return
 
     # Load existing memories
     storage = StorageManager()
@@ -627,7 +631,7 @@ async def process_audio_with_graph(audio: np.ndarray) -> AsyncIterator[VoiceEven
 
     # Run through graph
     try:
-        graph = create_transcription_graph(enable_cleanup=enable_cleanup, enable_memory=enable_memory)
+        graph = create_transcription_graph(api_key=api_key, enable_cleanup=enable_cleanup, enable_memory=enable_memory)
         final_state = await graph.ainvoke(initial_state)
         
         if final_state.get("error"):
@@ -648,26 +652,30 @@ def validate_configuration() -> None:
     Validate application configuration.
 
     Checks that all required configuration is present and valid.
+    API key can come from either environment variable or settings file.
 
     Raises:
         ConfigurationError: If configuration is invalid
     """
-    if not OPENAI_API_KEY:
-        raise ConfigurationError(
-            "OPENAI_API_KEY environment variable is required. "
-            "Set it in your .env file or export it."
-        )
-
-    if not OPENAI_API_KEY_PATTERN.match(OPENAI_API_KEY):
-        raise ConfigurationError(
-            "Invalid OPENAI_API_KEY format. "
-            "Expected format: sk-..."
-        )
-
-    # Ensure data directory exists
+    # Ensure data directory exists first (needed to read settings)
     TRANSCRIPTS_FILE.parent.mkdir(parents=True, exist_ok=True)
     MEMORIES_FILE.parent.mkdir(parents=True, exist_ok=True)
     SETTINGS_FILE.parent.mkdir(parents=True, exist_ok=True)
+
+    # Check for API key in settings or environment
+    settings = load_settings()
+    api_key = settings.get('openaiApiKey')
+
+    if not api_key:
+        logger.warning(
+            "OpenAI API key not configured. "
+            "Set it in the UI Settings or via OPENAI_API_KEY environment variable."
+        )
+    elif not OPENAI_API_KEY_PATTERN.match(api_key):
+        logger.warning(
+            "Invalid OpenAI API key format. "
+            "Expected format: sk-..."
+        )
 
     logger.info("Configuration validated successfully")
 
@@ -772,7 +780,7 @@ class VoiceDictationServer:
         signal.signal(signal.SIGINT, self._signal_handler)
         signal.signal(signal.SIGTERM, self._signal_handler)
 
-        logger.info("OmarchyFlow v2 Ready (Whisper + GPT-4o-mini + Memory)")
+        logger.info("Oflow v2 Ready (Whisper + GPT-4o-mini + Memory)")
 
     def _audio_callback(self, indata, frames, time_info, status):
         if self.is_recording:
@@ -881,7 +889,7 @@ class VoiceDictationServer:
 
 def main() -> None:
     """
-    Main entry point for OmarchyFlow.
+    Main entry point for Oflow.
 
     If called with a command (start/stop/toggle), sends the command to the running server.
     Otherwise, starts the voice dictation server.
@@ -890,7 +898,7 @@ def main() -> None:
         cmd = sys.argv[1]
         if cmd not in ("start", "stop", "toggle"):
             print(f"Unknown command: {cmd}", file=sys.stderr)
-            print("Usage: omarchyflow [start|stop|toggle]", file=sys.stderr)
+            print("Usage: oflow [start|stop|toggle]", file=sys.stderr)
             sys.exit(1)
 
         try:
@@ -901,7 +909,7 @@ def main() -> None:
         except (ConnectionRefusedError, FileNotFoundError, OSError) as e:
             print(
                 f"Server not running: {e}\n"
-                "Start the server with: ./omarchyflow",
+                "Start the server with: ./oflow",
                 file=sys.stderr
             )
             sys.exit(1)

@@ -1,8 +1,8 @@
-# OmarchyFlow UI
+# Oflow UI
 
-A modern, beautiful system tray application for OmarchyFlow voice assistant. Built with Tauri v2, React, and Shadcn/UI.
+A modern, beautiful system tray application for Oflow voice assistant. Built with Tauri v2, React, and Shadcn/UI.
 
-![OmarchyFlow UI](https://raw.githubusercontent.com/omarchyflow/ui/main/screenshot.png)
+![Oflow UI](https://raw.githubusercontent.com/oflow/ui/main/screenshot.png)
 
 ## Features
 
@@ -10,7 +10,7 @@ A modern, beautiful system tray application for OmarchyFlow voice assistant. Bui
 - **System Tray**: Quick access from your menu bar
 - **Live History**: Searchable transcript history
 - **Native Performance**: Built with Rust and Tauri
-- **Privacy Focus**: All data stays local in `~/.omarchyflow`
+- **Privacy Focus**: All data stays local in `~/.oflow`
 
 ## Tech Stack
 
@@ -21,7 +21,7 @@ A modern, beautiful system tray application for OmarchyFlow voice assistant. Bui
 ## Usage
 
 1. **Start the UI**:
-   - Launch `OmarchyFlow` from your system menu or run `omarchyflow-ui`.
+   - Launch `Oflow` from your system menu or run `oflow-ui`.
    - It will sit in your system tray.
 
 2. **Dictate (Super+I)**:
@@ -47,7 +47,7 @@ The binary will be in `src-tauri/target/release/bundle`.
 
 ## Configuration
 
-OmarchyFlow UI reads your transcripts from `~/.omarchyflow/transcripts.jsonl`. Ensure your Python backend is running and writing to this location.
+Oflow UI reads your transcripts from `~/.oflow/transcripts.jsonl`. Ensure your Python backend is running and writing to this location.
 
 ## Contributing
 

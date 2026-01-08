@@ -11,7 +11,7 @@
       "identifier": "fs:allow-read-text-file",
       "allow": [
         {
-          "path": "$HOME/.omarchyflow/**"
+          "path": "$HOME/.oflow/**"
         }
       ]
     },
@@ -19,7 +19,7 @@
       "identifier": "fs:allow-write-file",
       "allow": [
         {
-          "path": "$HOME/.omarchyflow/**"
+          "path": "$HOME/.oflow/**"
         }
       ]
     },

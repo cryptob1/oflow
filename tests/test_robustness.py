@@ -7,15 +7,15 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import importlib.util
-omarchyflow_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "omarchyflow")
-spec = importlib.util.spec_from_file_location("omarchyflow", omarchyflow_path)
-omarchyflow = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(omarchyflow)
+oflow_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "oflow")
+spec = importlib.util.spec_from_file_location("oflow", oflow_path)
+oflow = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(oflow)
 
-stt_stream = omarchyflow.stt_stream
-AudioValidator = omarchyflow.AudioValidator
-AudioProcessor = omarchyflow.AudioProcessor
-EventType = omarchyflow.EventType
+stt_stream = oflow.stt_stream
+AudioValidator = oflow.AudioValidator
+AudioProcessor = oflow.AudioProcessor
+EventType = oflow.EventType
 
 
 def create_test_audio(duration_sec: float = 2.0, frequency: int = 440):
@@ -144,7 +144,7 @@ async def test_valid_audio_stream():
 
 async def run_all_tests():
     print("=" * 60)
-    print("OmarchyFlow LangChain Robustness Tests")
+    print("Oflow LangChain Robustness Tests")
     print("=" * 60)
     
     tests = [

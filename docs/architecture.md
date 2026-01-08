@@ -1,8 +1,8 @@
-# OmarchyFlow LangChain Rebuild
+# Oflow LangChain Rebuild
 
 ## Summary
 
-Rebuilt OmarchyFlow using LangChain voice agent architecture to fix reliability issues with audio handling and API calls.
+Rebuilt Oflow using LangChain voice agent architecture to fix reliability issues with audio handling and API calls.
 
 ## Problem Statement
 
@@ -24,7 +24,7 @@ Implemented the "Sandwich Architecture" pattern from LangChain's voice agent doc
 
 ## Implementation Details
 
-### New File: `omarchyflow_langchain.py`
+### New File: `oflow_langchain.py`
 
 **Key improvements:**
 
@@ -142,7 +142,7 @@ Audio → Validate → Normalize → AsyncIterator[VoiceEvent]
 
 ```bash
 cd ~/voice-assistant
-.venv/bin/python3 ./omarchyflow_langchain.py &
+.venv/bin/python3 ./oflow_langchain.py &
 ```
 
 ### Using Voice Dictation
@@ -181,7 +181,7 @@ cd ~/voice-assistant
 Expected output:
 ```
 ============================================================
-OmarchyFlow LangChain Robustness Tests
+Oflow LangChain Robustness Tests
 ============================================================
 
 === Test 1: Empty Audio Validation ===
@@ -217,11 +217,11 @@ Results: 8 passed, 0 failed
 
 Hyprland keybindings updated to use new script:
 ```conf
-bind = SUPER, I, exec, /home/vish/voice-assistant/.venv/bin/python /home/vish/voice-assistant/omarchyflow_langchain.py start
-bindr = SUPER, I, exec, /home/vish/voice-assistant/.venv/bin/python /home/vish/voice-assistant/omarchyflow_langchain.py stop
+bind = SUPER, I, exec, /home/vish/voice-assistant/.venv/bin/python /home/vish/voice-assistant/oflow_langchain.py start
+bindr = SUPER, I, exec, /home/vish/voice-assistant/.venv/bin/python /home/vish/voice-assistant/oflow_langchain.py stop
 ```
 
-Original `omarchyflow.py` kept for reference but no longer active.
+Original `oflow.py` kept for reference but no longer active.
 
 ## Future Enhancements
 
@@ -235,12 +235,12 @@ Potential improvements based on LangChain architecture:
 ## References
 
 - [LangChain Voice Agent Guide](https://docs.langchain.com/oss/python/langchain/voice-agent)
-- Original implementation: `omarchyflow.py`
-- New implementation: `omarchyflow_langchain.py`
+- Original implementation: `oflow.py`
+- New implementation: `oflow_langchain.py`
 - Test suite: `test_langchain_robustness.py`
 
 ---
 
 **Status:** ✅ Complete and tested
-**Current server:** `omarchyflow_langchain.py` (PID: 324457)
+**Current server:** `oflow_langchain.py` (PID: 324457)
 **Keybindings:** Updated and reloaded

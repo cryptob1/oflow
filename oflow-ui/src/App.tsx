@@ -84,7 +84,7 @@ export default function App() {
           <div className="h-8 w-8 rounded-full bg-primary flex items-center justify-center">
             <Mic className="h-4 w-4 text-primary-foreground" />
           </div>
-          <h1 className="font-bold text-xl tracking-tight">OmarchyFlow</h1>
+          <h1 className="font-bold text-xl tracking-tight">Oflow</h1>
         </div>
 
         <nav className="space-y-2 flex-1">

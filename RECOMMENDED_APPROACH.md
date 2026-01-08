@@ -169,7 +169,7 @@ async fn start_recording() {
 // ✅ Good
 async function getTranscripts(): Promise<Transcript[]> {
   try {
-    const contents = await readTextFile('.omarchyflow/transcripts.jsonl', {
+    const contents = await readTextFile('.oflow/transcripts.jsonl', {
       baseDir: BaseDirectory.Home
     });
     return parseTranscripts(contents);
@@ -181,7 +181,7 @@ async function getTranscripts(): Promise<Transcript[]> {
 
 // ❌ Bad
 async function getTranscripts() {
-  const contents = await readTextFile('.omarchyflow/transcripts.jsonl');
+  const contents = await readTextFile('.oflow/transcripts.jsonl');
   return JSON.parse(contents); // No error handling
 }
 ```

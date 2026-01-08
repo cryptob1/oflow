@@ -58,7 +58,7 @@ build/
 node_modules/
 
 # Tauri
-omarchyflow-ui/src-tauri/target/
+oflow-ui/src-tauri/target/
 
 # Backups
-omarchyflow_v1_backup/
+oflow_v1_backup/

@@ -1,27 +1,27 @@
-# Systemd Service Setup for OmarchyFlow
+# Systemd Service Setup for Oflow
 
-This guide explains how to set up OmarchyFlow as a systemd user service for automatic startup.
+This guide explains how to set up Oflow as a systemd user service for automatic startup.
 
 ## Installation
 
 ### 1. Create the service file
 
-Create `~/.config/systemd/user/omarchyflow.service`:
+Create `~/.config/systemd/user/oflow.service`:
 
 ```ini
 [Unit]
-Description=OmarchyFlow Voice Dictation Server
-Documentation=https://github.com/CryptoB1/omarchyflow
+Description=Oflow Voice Dictation Server
+Documentation=https://github.com/CryptoB1/oflow
 After=graphical-session.target pulseaudio.service pipewire.service
 Wants=graphical-session.target
 
 [Service]
 Type=simple
-ExecStart=/path/to/omarchyflow/.venv/bin/python /path/to/omarchyflow/omarchyflow.py
+ExecStart=/path/to/oflow/.venv/bin/python /path/to/oflow/oflow.py
 Restart=on-failure
 RestartSec=5
 Environment=PATH=/usr/bin:/usr/local/bin
-WorkingDirectory=/path/to/omarchyflow
+WorkingDirectory=/path/to/oflow
 
 # Resource limits
 MemoryMax=512M
@@ -40,12 +40,12 @@ WantedBy=default.target
 
 ### 2. Customize the paths
 
-Replace `/path/to/omarchyflow` with the actual installation path:
+Replace `/path/to/oflow` with the actual installation path:
 
 ```bash
-# Example: If installed in ~/code/omarchyflow
-sed -i 's|/path/to/omarchyflow|/home/yourusername/code/omarchyflow|g' \
-    ~/.config/systemd/user/omarchyflow.service
+# Example: If installed in ~/code/oflow
+sed -i 's|/path/to/oflow|/home/yourusername/code/oflow|g' \
+    ~/.config/systemd/user/oflow.service
 ```
 
 ### 3. Enable and start the service
@@ -55,29 +55,29 @@ sed -i 's|/path/to/omarchyflow|/home/yourusername/code/omarchyflow|g' \
 systemctl --user daemon-reload
 
 # Enable the service (auto-start on login)
-systemctl --user enable omarchyflow.service
+systemctl --user enable oflow.service
 
 # Start the service now
-systemctl --user start omarchyflow.service
+systemctl --user start oflow.service
 
 # Check status
-systemctl --user status omarchyflow.service
+systemctl --user status oflow.service
 ```
 
 ## Management Commands
 
 ```bash
 # View logs
-journalctl --user -u omarchyflow.service -f
+journalctl --user -u oflow.service -f
 
 # Restart service
-systemctl --user restart omarchyflow.service
+systemctl --user restart oflow.service
 
 # Stop service
-systemctl --user stop omarchyflow.service
+systemctl --user stop oflow.service
 
 # Disable auto-start
-systemctl --user disable omarchyflow.service
+systemctl --user disable oflow.service
 ```
 
 ## Troubleshooting
@@ -86,14 +86,14 @@ systemctl --user disable omarchyflow.service
 
 1. Check logs:
    ```bash
-   journalctl --user -u omarchyflow.service -n 50
+   journalctl --user -u oflow.service -n 50
    ```
 
 2. Verify Python environment:
    ```bash
    # Ensure the venv is activated in the service
    # Or use absolute path to Python
-   ExecStart=/path/to/omarchyflow/.venv/bin/python /path/to/omarchyflow/omarchyflow.py
+   ExecStart=/path/to/oflow/.venv/bin/python /path/to/oflow/oflow.py
    ```
 
 3. Check audio permissions:
@@ -142,18 +142,18 @@ Or use an environment file:
 
 ```ini
 [Service]
-EnvironmentFile=/path/to/omarchyflow/.env
+EnvironmentFile=/path/to/oflow/.env
 ```
 
 ## Alternative: Socket Activation
 
 For on-demand startup (saves resources when not in use):
 
-Create `~/.config/systemd/user/omarchyflow.socket`:
+Create `~/.config/systemd/user/oflow.socket`:
 
 ```ini
 [Unit]
-Description=OmarchyFlow Socket
+Description=Oflow Socket
 
 [Socket]
 ListenStream=/tmp/voice-dictation.sock
@@ -167,17 +167,17 @@ Then modify the service to be socket-activated:
 
 ```ini
 [Unit]
-Description=OmarchyFlow Voice Dictation Server
-Requires=omarchyflow.socket
+Description=Oflow Voice Dictation Server
+Requires=oflow.socket
 
 [Service]
 Type=simple
-ExecStart=/path/to/omarchyflow/.venv/bin/python /path/to/omarchyflow/omarchyflow.py
+ExecStart=/path/to/oflow/.venv/bin/python /path/to/oflow/oflow.py
 StandardInput=socket
 ```
 
 Enable with:
 ```bash
-systemctl --user enable omarchyflow.socket
-systemctl --user start omarchyflow.socket
+systemctl --user enable oflow.socket
+systemctl --user start oflow.socket
 ```

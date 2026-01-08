@@ -1,6 +1,6 @@
-# Contributing to OmarchyFlow
+# Contributing to Oflow
 
-Thank you for considering contributing to OmarchyFlow! This document provides guidelines for contributing.
+Thank you for considering contributing to Oflow! This document provides guidelines for contributing.
 
 ## Code of Conduct
 
@@ -39,8 +39,8 @@ This project follows the [Contributor Covenant Code of Conduct](CODE_OF_CONDUCT.
 
 ```bash
 # Clone your fork
-git clone https://github.com/YOUR_USERNAME/omarchyflow.git
-cd omarchyflow
+git clone https://github.com/YOUR_USERNAME/oflow.git
+cd oflow
 
 # Create virtual environment
 uv venv
@@ -70,7 +70,7 @@ make lint
 ## Testing
 
 - **Run all tests**: `pytest tests/`
-- **Run with coverage**: `pytest --cov=omarchyflow tests/`
+- **Run with coverage**: `pytest --cov=oflow tests/`
 - **Test file naming**: `test_*.py`
 - **Write meaningful test names**: `test_audio_validation_rejects_empty_audio()`
 
@@ -106,14 +106,14 @@ Fixes #123
 
 ## Project Structure
 
-- `omarchyflow` - Main executable script
+- `oflow` - Main executable script
 - `tests/` - Test suite
 - `docs/` - Documentation
 - `.github/workflows/` - CI/CD configuration
 
 ## Questions?
 
-- **Discussions**: https://github.com/CryptoB1/omarchyflow/discussions
-- **Issues**: https://github.com/CryptoB1/omarchyflow/issues
+- **Discussions**: https://github.com/CryptoB1/oflow/discussions
+- **Issues**: https://github.com/CryptoB1/oflow/issues
 
 Thank you for contributing! 🎉

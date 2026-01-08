@@ -11,6 +11,7 @@ export interface Transcript {
 export interface Settings {
     enableCleanup: boolean;
     enableMemory: boolean;
+    openaiApiKey?: string;
 }
 
 /**
@@ -104,7 +105,7 @@ export async function hideWindow(): Promise<void> {
  */
 export async function getTranscripts(): Promise<Transcript[]> {
     try {
-        const contents = await readTextFile('.omarchyflow/transcripts.jsonl', {
+        const contents = await readTextFile('.oflow/transcripts.jsonl', {
             baseDir: BaseDirectory.Home
         });
 
@@ -194,7 +195,7 @@ export async function getTranscriptStats(): Promise<TranscriptStats> {
  */
 export async function loadSettings(): Promise<Settings> {
     try {
-        const contents = await readTextFile('.omarchyflow/settings.json', {
+        const contents = await readTextFile('.oflow/settings.json', {
             baseDir: BaseDirectory.Home
         });
         return JSON.parse(contents) as Settings;
@@ -213,7 +214,7 @@ export async function loadSettings(): Promise<Settings> {
  */
 export async function saveSettings(settings: Settings): Promise<void> {
     try {
-        await writeTextFile('.omarchyflow/settings.json', JSON.stringify(settings, null, 2), {
+        await writeTextFile('.oflow/settings.json', JSON.stringify(settings, null, 2), {
             baseDir: BaseDirectory.Home
         });
     } catch (error) {
@@ -226,7 +227,7 @@ export async function saveSettings(settings: Settings): Promise<void> {
  */
 export async function clearHistory(): Promise<void> {
     try {
-        await writeTextFile('.omarchyflow/transcripts.jsonl', '', {
+        await writeTextFile('.oflow/transcripts.jsonl', '', {
             baseDir: BaseDirectory.Home
         });
     } catch (error) {

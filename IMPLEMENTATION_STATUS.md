@@ -1,11 +1,11 @@
-# OmarchyFlow Implementation Status
+# Oflow Implementation Status
 
 ## Overview
-OmarchyFlow is a voice dictation app similar to WispFlow/Willow on Mac. It should run in the system tray, record audio on a global hotkey, transcribe to English, and paste into the active window.
+Oflow is a voice dictation app similar to WispFlow/Willow on Mac. It should run in the system tray, record audio on a global hotkey, transcribe to English, and paste into the active window.
 
 ## ✅ What's Implemented
 
-### Python Backend (`omarchyflow.py`)
+### Python Backend (`oflow.py`)
 **Status: ✅ Fully Functional**
 
 1. **Audio Recording**
@@ -27,16 +27,16 @@ OmarchyFlow is a voice dictation app similar to WispFlow/Willow on Mac. It shoul
    - Desktop notifications for status
 
 4. **Storage**
-   - Saves transcripts to `~/.omarchyflow/transcripts.jsonl`
-   - Stores memories in `~/.omarchyflow/memories.json`
+   - Saves transcripts to `~/.oflow/transcripts.jsonl`
+   - Stores memories in `~/.oflow/memories.json`
    - JSONL format for easy parsing
 
 5. **Communication**
    - Unix socket server at `/tmp/voice-dictation.sock`
    - Accepts commands: `start`, `stop`, `toggle`
-   - CLI interface: `./omarchyflow [start|stop|toggle]`
+   - CLI interface: `./oflow [start|stop|toggle]`
 
-### Tauri UI Shell (`omarchyflow-ui/`)
+### Tauri UI Shell (`oflow-ui/`)
 **Status: ⚠️ Partially Implemented**
 
 1. **Basic Structure**
@@ -49,7 +49,7 @@ OmarchyFlow is a voice dictation app similar to WispFlow/Willow on Mac. It shoul
    - No menu or click handlers yet
 
 3. **Backend Integration**
-   - Sidecar binary configured (`omarchyflow-backend-x86_64-unknown-linux-gnu`)
+   - Sidecar binary configured (`oflow-backend-x86_64-unknown-linux-gnu`)
    - Backend spawns on startup but not properly integrated
    - No Tauri commands to control recording
 
@@ -94,7 +94,7 @@ OmarchyFlow is a voice dictation app similar to WispFlow/Willow on Mac. It shoul
 
 6. **Real Data Integration** 🟡 MEDIUM PRIORITY
    - History view uses mock data
-   - Need to read from `~/.omarchyflow/transcripts.jsonl`
+   - Need to read from `~/.oflow/transcripts.jsonl`
    - Dashboard stats should be calculated from real data
    - Need Tauri command to fetch transcripts
 
@@ -131,7 +131,7 @@ OmarchyFlow is a voice dictation app similar to WispFlow/Willow on Mac. It shoul
 ### Current Flow (Broken)
 ```
 User presses Super+I (Hyprland) 
-  → Executes `./omarchyflow toggle` (external)
+  → Executes `./oflow toggle` (external)
   → Python backend receives command
   → Records and transcribes
   → Types text
@@ -192,14 +192,14 @@ User presses Super+I (Tauri global hotkey)
 
 ## Files That Need Changes
 
-### Rust (`omarchyflow-ui/src-tauri/src/lib.rs`)
+### Rust (`oflow-ui/src-tauri/src/lib.rs`)
 - Add global hotkey registration
 - Add Unix socket client
 - Add Tauri commands
 - Add tray menu
 - Add window management
 
-### TypeScript (`omarchyflow-ui/src/`)
+### TypeScript (`oflow-ui/src/`)
 - `lib/api.ts` - Add Tauri command wrappers
 - `App.tsx` - Connect buttons to API
 - `components/Dashboard.tsx` - Fetch real stats
@@ -207,6 +207,6 @@ User presses Super+I (Tauri global hotkey)
 - `components/SettingsView.tsx` - Save/load settings
 
 ### Configuration
-- `omarchyflow-ui/src-tauri/Cargo.toml` - Add `tauri-plugin-global-shortcut`
-- `omarchyflow-ui/src-tauri/tauri.conf.json` - Configure window behavior
+- `oflow-ui/src-tauri/Cargo.toml` - Add `tauri-plugin-global-shortcut`
+- `oflow-ui/src-tauri/tauri.conf.json` - Configure window behavior
 

@@ -3,8 +3,8 @@ set -e
 
 # Detect target triple (simplified for Linux)
 TARGET="x86_64-unknown-linux-gnu"
-SIDE_CAR_NAME="omarchyflow-backend"
-TAURI_BIN_DIR="omarchyflow-ui/src-tauri/binaries"
+SIDE_CAR_NAME="oflow-backend"
+TAURI_BIN_DIR="oflow-ui/src-tauri/binaries"
 
 # Create binaries directory if not exists
 mkdir -p "$TAURI_BIN_DIR"
@@ -19,7 +19,7 @@ pyinstaller --clean --noconfirm --onefile --name "$SIDE_CAR_NAME" \
     --hidden-import=langgraph \
     --hidden-import=numpy \
     --hidden-import=sounddevice \
-    omarchyflow.py
+    oflow.py
 
 echo "🚚 Moving binary to Tauri..."
 mv "dist/$SIDE_CAR_NAME" "$TAURI_BIN_DIR/$SIDE_CAR_NAME-$TARGET"

@@ -3,8 +3,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { loadSettings, saveSettings, clearHistory, type Settings } from "@/lib/api";
-import { CheckCircle2, AlertCircle } from "lucide-react";
+import { CheckCircle2, AlertCircle, Eye, EyeOff } from "lucide-react";
 
 export function SettingsView() {
     const [settings, setSettings] = useState<Settings>({
@@ -14,6 +15,8 @@ export function SettingsView() {
     const [isLoading, setIsLoading] = useState(true);
     const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
     const [clearStatus, setClearStatus] = useState<"idle" | "clearing" | "cleared" | "error">("idle");
+    const [showApiKey, setShowApiKey] = useState(false);
+    const [apiKeyInput, setApiKeyInput] = useState("");
 
     useEffect(() => {
         const load = async () => {
@@ -21,6 +24,9 @@ export function SettingsView() {
             try {
                 const loadedSettings = await loadSettings();
                 setSettings(loadedSettings);
+                if (loadedSettings.openaiApiKey) {
+                    setApiKeyInput(loadedSettings.openaiApiKey);
+                }
             } catch (error) {
                 console.error("Failed to load settings:", error);
             } finally {
@@ -63,6 +69,22 @@ export function SettingsView() {
         }
     };
 
+    const handleSaveApiKey = async () => {
+        const newSettings = { ...settings, openaiApiKey: apiKeyInput };
+        setSettings(newSettings);
+
+        setSaveStatus("saving");
+        try {
+            await saveSettings(newSettings);
+            setSaveStatus("saved");
+            setTimeout(() => setSaveStatus("idle"), 2000);
+        } catch (error) {
+            console.error("Failed to save API key:", error);
+            setSaveStatus("error");
+            setTimeout(() => setSaveStatus("idle"), 3000);
+        }
+    };
+
     return (
         <div className="space-y-6">
             <div>
@@ -71,6 +93,45 @@ export function SettingsView() {
             </div>
 
             <div className="grid gap-6">
+                <Card>
+                    <CardHeader>
+                        <CardTitle>API Configuration</CardTitle>
+                        <CardDescription>Configure your OpenAI API key for transcription and cleanup.</CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                        <div className="space-y-2">
+                            <Label htmlFor="apiKey">OpenAI API Key</Label>
+                            <div className="flex gap-2">
+                                <div className="relative flex-1">
+                                    <Input
+                                        id="apiKey"
+                                        type={showApiKey ? "text" : "password"}
+                                        placeholder="sk-..."
+                                        value={apiKeyInput}
+                                        onChange={(e) => setApiKeyInput(e.target.value)}
+                                        disabled={isLoading}
+                                    />
+                                    <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="sm"
+                                        className="absolute right-0 top-0 h-full px-3 hover:bg-transparent"
+                                        onClick={() => setShowApiKey(!showApiKey)}
+                                    >
+                                        {showApiKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                                    </Button>
+                                </div>
+                                <Button onClick={handleSaveApiKey} disabled={isLoading || saveStatus === "saving"}>
+                                    {saveStatus === "saving" ? "Saving..." : "Save"}
+                                </Button>
+                            </div>
+                            <p className="text-xs text-muted-foreground">
+                                Get your API key from <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer" className="underline">platform.openai.com</a>
+                            </p>
+                        </div>
+                    </CardContent>
+                </Card>
+
                 <Card>
                     <CardHeader>
                         <CardTitle>Pipeline Configuration</CardTitle>
@@ -125,7 +186,7 @@ export function SettingsView() {
                         <div className="space-y-1">
                             <Label>Data Location</Label>
                             <div className="p-2 bg-muted rounded-md text-sm font-mono">
-                                ~/.omarchyflow/transcripts.jsonl
+                                ~/.oflow/transcripts.jsonl
                             </div>
                         </div>
                         <div className="pt-2 space-y-2">
