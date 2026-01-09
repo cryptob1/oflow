@@ -6,13 +6,19 @@ Hold a key, speak, release — your words appear wherever you're typing.
 
 ![Settings](docs/settings.png)
 
+## Features
+
+- **Instant transcription** — Groq Whisper runs at 200x realtime (~0.5s latency)
+- **Smart cleanup** — Auto-fixes grammar, removes filler words, formats text
+- **Privacy-first** — All data stored locally, no cloud backend
+- **Open source** — Built with [LangGraph](https://github.com/langchain-ai/langgraph) + Tauri
+
 ## Install
 
 **Download the latest release:**
 
 [github.com/CryptoB1/oflow/releases](https://github.com/CryptoB1/oflow/releases)
 
-Download the `.AppImage`, make it executable, and run:
 ```bash
 chmod +x oflow-*.AppImage
 ./oflow-*.AppImage
@@ -23,6 +29,8 @@ chmod +x oflow-*.AppImage
 1. Get a free Groq API key: https://console.groq.com/keys
 2. Open oflow → Settings → paste your Groq key
 3. Press **Super+I** to record, release to transcribe
+
+That's it.
 
 ## How It Works
 
@@ -35,12 +43,12 @@ Hold Super+I → Speak → Release → Text appears in active window
 | "um so like send an email to john" | "Send an email to John." |
 | "first buy milk second call mom" | "First, buy milk. Second, call mom." |
 
-Groq's Whisper runs at 200x realtime — transcription takes ~0.5 seconds.
+## Tech Stack
 
-## Requirements
-
-- Linux with Hyprland (Omarchy)
-- Free Groq API key
+- **Transcription**: [Groq Whisper](https://groq.com) (200x faster than OpenAI)
+- **Text cleanup**: Llama 3.1 8B via Groq
+- **Pipeline**: [LangGraph](https://github.com/langchain-ai/langgraph)
+- **Desktop app**: [Tauri](https://tauri.app) + React
 
 ## For LLMs
 

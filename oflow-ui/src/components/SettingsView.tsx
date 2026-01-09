@@ -325,7 +325,7 @@ export function SettingsView() {
                         <div className="p-3 bg-green-500/10 border border-green-500/20 rounded-lg">
                             <p className="text-sm text-green-700 dark:text-green-400">
                                 <strong>Your Data, Your Control</strong> - All transcripts and settings are stored locally on your machine.
-                                oflow has no cloud backend or analytics. Audio is sent only to OpenAI for transcription, nothing else.
+                                oflow has no cloud backend or analytics. Audio is only sent to your chosen provider (Groq/OpenAI) for transcription.
                             </p>
                         </div>
                         <div className="space-y-1">
