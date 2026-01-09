@@ -1,0 +1,51 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Setup Rust
+        uses: dtolnay/rust-action@stable
+
+      - name: Install frontend dependencies
+        working-directory: oflow-ui
+        run: npm ci
+
+      - name: Build Tauri app
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: oflow-ui
+          tagName: ${{ github.ref_name }}
+          releaseName: 'oflow ${{ github.ref_name }}'
+          releaseBody: |
+            ## Install
+
+            Download `oflow_*_amd64.AppImage`, then:
+            ```bash
+            chmod +x oflow_*_amd64.AppImage
+            ./oflow_*_amd64.AppImage
+            ```
+
+            See [README](https://github.com/CryptoB1/oflow#setup) for setup instructions.
+          releaseDraft: false
+          prerelease: false
