@@ -43,6 +43,7 @@ import sounddevice as sd
 from dotenv import load_dotenv
 from langgraph.graph import StateGraph, END
 from langchain_openai import ChatOpenAI
+from langchain_groq import ChatGroq
 
 load_dotenv()
 
@@ -83,19 +84,26 @@ SETTINGS_FILE = Path.home() / ".oflow" / "settings.json"
 MEMORY_BUILD_THRESHOLD = 1000  # Build memories every N transcripts
 MAX_MEMORIES_IN_CONTEXT = 5  # Maximum memories to include in cleanup prompt
 
-# OpenAI API key format validation (relaxed - just check it starts with sk-)
+# API key format validation
 OPENAI_API_KEY_PATTERN = re.compile(r"^sk-")
+GROQ_API_KEY_PATTERN = re.compile(r"^gsk_")
+
+# API endpoints
+OPENAI_WHISPER_URL = "https://api.openai.com/v1/audio/transcriptions"
+GROQ_WHISPER_URL = "https://api.groq.com/openai/v1/audio/transcriptions"
 
 # ============================================================================
 # Environment Variables and Configuration
 # ============================================================================
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 DEBUG_MODE = os.getenv("DEBUG_MODE", "false").lower() == "true"
 
 # Default settings (can be overridden by settings.json)
 DEFAULT_ENABLE_CLEANUP = os.getenv("ENABLE_CLEANUP", "true").lower() == "true"
 DEFAULT_ENABLE_MEMORY = os.getenv("ENABLE_MEMORY", "false").lower() == "true"
+DEFAULT_PROVIDER = os.getenv("PROVIDER", "groq")  # Default to Groq (faster)
 
 
 def load_settings() -> dict:
@@ -104,7 +112,7 @@ def load_settings() -> dict:
     Falls back to environment variable defaults if file doesn't exist.
 
     Returns:
-        dict with 'enableCleanup', 'enableMemory', and 'openaiApiKey' keys
+        dict with settings including provider, API keys, and feature flags
     """
     try:
         if SETTINGS_FILE.exists():
@@ -114,6 +122,8 @@ def load_settings() -> dict:
                     'enableCleanup': settings.get('enableCleanup', DEFAULT_ENABLE_CLEANUP),
                     'enableMemory': settings.get('enableMemory', DEFAULT_ENABLE_MEMORY),
                     'openaiApiKey': settings.get('openaiApiKey') or OPENAI_API_KEY,
+                    'groqApiKey': settings.get('groqApiKey') or GROQ_API_KEY,
+                    'provider': settings.get('provider', DEFAULT_PROVIDER),
                 }
     except Exception as e:
         logger.warning(f"Failed to load settings from {SETTINGS_FILE}: {e}")
@@ -122,6 +132,8 @@ def load_settings() -> dict:
         'enableCleanup': DEFAULT_ENABLE_CLEANUP,
         'enableMemory': DEFAULT_ENABLE_MEMORY,
         'openaiApiKey': OPENAI_API_KEY,
+        'groqApiKey': GROQ_API_KEY,
+        'provider': DEFAULT_PROVIDER,
     }
 
 
@@ -329,32 +341,39 @@ class AudioProcessor:
 
 class WhisperAPI:
     """
-    OpenAI Whisper API client for speech-to-text transcription.
+    Whisper API client for speech-to-text transcription.
 
-    Handles communication with OpenAI's Whisper API to transcribe audio files.
+    Supports both OpenAI and Groq backends. Groq is ~200x faster.
     """
 
-    def __init__(self, api_key: str) -> None:
+    def __init__(self, api_key: str, provider: str = "openai") -> None:
         """
         Initialize Whisper API client.
 
         Args:
-            api_key: OpenAI API key
+            api_key: API key (OpenAI or Groq)
+            provider: "openai" or "groq"
 
         Raises:
             ConfigurationError: If API key is invalid
         """
         if not api_key:
-            raise ConfigurationError("OpenAI API key is required")
-        if not OPENAI_API_KEY_PATTERN.match(api_key):
-            raise ConfigurationError("Invalid OpenAI API key format")
-        
+            raise ConfigurationError(f"{provider.title()} API key is required")
+
         self.api_key = api_key
+        self.provider = provider
         self.client = httpx.AsyncClient(timeout=API_TIMEOUT_SECONDS)
+
+        if provider == "groq":
+            self.api_url = GROQ_WHISPER_URL
+            self.model = "whisper-large-v3-turbo"  # Fastest Groq model
+        else:
+            self.api_url = OPENAI_WHISPER_URL
+            self.model = "whisper-1"
 
     async def transcribe(self, audio_base64: str) -> str:
         """
-        Transcribe audio using OpenAI Whisper API.
+        Transcribe audio using Whisper API.
 
         Args:
             audio_base64: Base64-encoded WAV audio file
@@ -375,13 +394,13 @@ class WhisperAPI:
             "file": ("audio.wav", audio_bytes, "audio/wav"),
         }
         data = {
-            "model": "whisper-1",
+            "model": self.model,
             "response_format": "json",
         }
 
         try:
             response = await self.client.post(
-                "https://api.openai.com/v1/audio/transcriptions",
+                self.api_url,
                 headers={"Authorization": f"Bearer {self.api_key}"},
                 files=files,
                 data=data,
@@ -414,14 +433,21 @@ class WhisperAPI:
 
 
 class TextCleanupAgent:
-    """Node 2: GPT-4o-mini cleanup and formatting"""
-    
-    def __init__(self, api_key: str):
-        self.llm = ChatOpenAI(
-            model="gpt-4o-mini",
-            temperature=0.3,
-            openai_api_key=api_key,
-        )
+    """Node 2: LLM cleanup and formatting (supports OpenAI and Groq)"""
+
+    def __init__(self, api_key: str, provider: str = "openai"):
+        if provider == "groq":
+            self.llm = ChatGroq(
+                model="llama-3.1-8b-instant",  # 560 tokens/sec - fastest for cleanup
+                temperature=0.3,
+                groq_api_key=api_key,
+            )
+        else:
+            self.llm = ChatOpenAI(
+                model="gpt-4o-mini",
+                temperature=0.3,
+                openai_api_key=api_key,
+            )
 
     async def cleanup(self, raw_text: str, memories: list[str] | None = None) -> str:
         memory_context = ""
@@ -507,13 +533,20 @@ class StorageManager:
 
 class MemoryBuilder:
     """Background job: Build memories from transcripts"""
-    
-    def __init__(self, api_key: str):
-        self.llm = ChatOpenAI(
-            model="gpt-4o-mini",
-            temperature=0.5,
-            openai_api_key=api_key,
-        )
+
+    def __init__(self, api_key: str, provider: str = "openai"):
+        if provider == "groq":
+            self.llm = ChatGroq(
+                model="llama-3.1-8b-instant",  # Fast model for memory building
+                temperature=0.5,
+                groq_api_key=api_key,
+            )
+        else:
+            self.llm = ChatOpenAI(
+                model="gpt-4o-mini",
+                temperature=0.5,
+                openai_api_key=api_key,
+            )
 
     async def build_memories(self, transcripts: list[dict]) -> list[str]:
         """Analyze transcripts and extract patterns/memories"""
@@ -555,19 +588,20 @@ PATTERNS (output as numbered list):"""
 
 
 # LangGraph Pipeline
-def create_transcription_graph(api_key: str, enable_cleanup: bool = True, enable_memory: bool = False):
+def create_transcription_graph(api_key: str, enable_cleanup: bool = True, enable_memory: bool = False, provider: str = "openai"):
     """Create the LangGraph workflow
 
     Args:
-        api_key: OpenAI API key for Whisper and GPT-4o-mini
-        enable_cleanup: Whether to use GPT-4o-mini for text cleanup
+        api_key: API key for Whisper and LLM (OpenAI or Groq)
+        enable_cleanup: Whether to use LLM for text cleanup
         enable_memory: Whether to use the memory system for learning patterns
+        provider: "openai" or "groq" (Groq is ~200x faster)
     """
 
-    whisper = WhisperAPI(api_key)
-    cleanup_agent = TextCleanupAgent(api_key) if enable_cleanup else None
+    whisper = WhisperAPI(api_key, provider=provider)
+    cleanup_agent = TextCleanupAgent(api_key, provider=provider) if enable_cleanup else None
     storage = StorageManager()
-    memory_builder = MemoryBuilder(api_key) if enable_memory else None
+    memory_builder = MemoryBuilder(api_key, provider=provider) if enable_memory else None
 
     async def node_whisper(state: TranscriptionState) -> TranscriptionState:
         """Node 1: Transcribe with Whisper"""
@@ -659,14 +693,23 @@ async def process_audio_with_graph(audio: np.ndarray) -> AsyncIterator[VoiceEven
 
     # Load settings from JSON file (allows UI to control behavior)
     settings = load_settings()
-    api_key = settings['openaiApiKey']
+    provider = settings.get('provider', 'openai')
     enable_cleanup = settings['enableCleanup']
     enable_memory = settings['enableMemory']
-    logger.debug(f"Settings: cleanup={enable_cleanup}, memory={enable_memory}")
 
-    if not api_key:
-        yield VoiceEvent(type=EventType.STT_ERROR, error="OpenAI API key not set. Configure it in Settings.")
-        return
+    # Select API key based on provider
+    if provider == "groq":
+        api_key = settings.get('groqApiKey')
+        if not api_key:
+            yield VoiceEvent(type=EventType.STT_ERROR, error="Groq API key not set. Configure it in Settings.")
+            return
+    else:
+        api_key = settings.get('openaiApiKey')
+        if not api_key:
+            yield VoiceEvent(type=EventType.STT_ERROR, error="OpenAI API key not set. Configure it in Settings.")
+            return
+
+    logger.debug(f"Settings: provider={provider}, cleanup={enable_cleanup}, memory={enable_memory}")
 
     # Load existing memories
     storage = StorageManager()
@@ -684,9 +727,14 @@ async def process_audio_with_graph(audio: np.ndarray) -> AsyncIterator[VoiceEven
 
     # Run through graph
     try:
-        graph = create_transcription_graph(api_key=api_key, enable_cleanup=enable_cleanup, enable_memory=enable_memory)
+        graph = create_transcription_graph(
+            api_key=api_key,
+            enable_cleanup=enable_cleanup,
+            enable_memory=enable_memory,
+            provider=provider
+        )
         final_state = await graph.ainvoke(initial_state)
-        
+
         if final_state.get("error"):
             yield VoiceEvent(type=EventType.STT_ERROR, error=final_state["error"])
         else:
@@ -715,20 +763,34 @@ def validate_configuration() -> None:
     MEMORIES_FILE.parent.mkdir(parents=True, exist_ok=True)
     SETTINGS_FILE.parent.mkdir(parents=True, exist_ok=True)
 
-    # Check for API key in settings or environment
+    # Check for API key based on provider
     settings = load_settings()
-    api_key = settings.get('openaiApiKey')
+    provider = settings.get('provider', 'openai')
 
-    if not api_key:
-        logger.warning(
-            "OpenAI API key not configured. "
-            "Set it in the UI Settings or via OPENAI_API_KEY environment variable."
-        )
-    elif not OPENAI_API_KEY_PATTERN.match(api_key):
-        logger.warning(
-            "Invalid OpenAI API key format. "
-            "Expected format: sk-..."
-        )
+    if provider == "groq":
+        api_key = settings.get('groqApiKey')
+        if not api_key:
+            logger.warning(
+                "Groq API key not configured. "
+                "Set it in the UI Settings or via GROQ_API_KEY environment variable."
+            )
+        elif not GROQ_API_KEY_PATTERN.match(api_key):
+            logger.warning(
+                "Invalid Groq API key format. "
+                "Expected format: gsk_..."
+            )
+    else:
+        api_key = settings.get('openaiApiKey')
+        if not api_key:
+            logger.warning(
+                "OpenAI API key not configured. "
+                "Set it in the UI Settings or via OPENAI_API_KEY environment variable."
+            )
+        elif not OPENAI_API_KEY_PATTERN.match(api_key):
+            logger.warning(
+                "Invalid OpenAI API key format. "
+                "Expected format: sk-..."
+            )
 
     logger.info("Configuration validated successfully")
 
@@ -833,7 +895,13 @@ class VoiceDictationServer:
         signal.signal(signal.SIGINT, self._signal_handler)
         signal.signal(signal.SIGTERM, self._signal_handler)
 
-        logger.info("Oflow v2 Ready (Whisper + GPT-4o-mini + Memory)")
+        # Log startup with provider info
+        settings = load_settings()
+        provider = settings.get('provider', 'openai')
+        if provider == "groq":
+            logger.info("oflow Ready (Groq Whisper Turbo + Llama 3.1 8B) - 200x faster")
+        else:
+            logger.info("oflow Ready (OpenAI Whisper + GPT-4o-mini)")
 
     def _audio_callback(self, indata, frames, time_info, status):
         if self.is_recording:

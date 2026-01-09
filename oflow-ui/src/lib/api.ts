@@ -12,6 +12,8 @@ export interface Settings {
     enableCleanup: boolean;
     enableMemory: boolean;
     openaiApiKey?: string;
+    groqApiKey?: string;
+    provider?: 'openai' | 'groq';  // Groq is ~200x faster
     shortcut?: string;  // e.g., "Super+I", "Ctrl+Shift+Space"
 }
 
@@ -208,6 +210,7 @@ export async function loadSettings(): Promise<Settings> {
         return {
             enableCleanup: true,
             enableMemory: false,
+            provider: 'groq',  // Default to Groq (faster)
             shortcut: DEFAULT_SHORTCUT
         };
     }

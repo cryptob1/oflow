@@ -5,18 +5,21 @@ import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { loadSettings, saveSettings, clearHistory, type Settings } from "@/lib/api";
-import { CheckCircle2, AlertCircle, Eye, EyeOff, Shield, Keyboard } from "lucide-react";
+import { CheckCircle2, AlertCircle, Eye, EyeOff, Shield, Keyboard, Zap } from "lucide-react";
 
 export function SettingsView() {
     const [settings, setSettings] = useState<Settings>({
         enableCleanup: true,
-        enableMemory: false
+        enableMemory: false,
+        provider: 'groq'
     });
     const [isLoading, setIsLoading] = useState(true);
     const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
     const [clearStatus, setClearStatus] = useState<"idle" | "clearing" | "cleared" | "error">("idle");
     const [showApiKey, setShowApiKey] = useState(false);
+    const [showGroqKey, setShowGroqKey] = useState(false);
     const [apiKeyInput, setApiKeyInput] = useState("");
+    const [groqKeyInput, setGroqKeyInput] = useState("");
 
     useEffect(() => {
         const load = async () => {
@@ -26,6 +29,9 @@ export function SettingsView() {
                 setSettings(loadedSettings);
                 if (loadedSettings.openaiApiKey) {
                     setApiKeyInput(loadedSettings.openaiApiKey);
+                }
+                if (loadedSettings.groqApiKey) {
+                    setGroqKeyInput(loadedSettings.groqApiKey);
                 }
             } catch (error) {
                 console.error("Failed to load settings:", error);
@@ -85,6 +91,38 @@ export function SettingsView() {
         }
     };
 
+    const handleSaveGroqKey = async () => {
+        const newSettings = { ...settings, groqApiKey: groqKeyInput };
+        setSettings(newSettings);
+
+        setSaveStatus("saving");
+        try {
+            await saveSettings(newSettings);
+            setSaveStatus("saved");
+            setTimeout(() => setSaveStatus("idle"), 2000);
+        } catch (error) {
+            console.error("Failed to save Groq API key:", error);
+            setSaveStatus("error");
+            setTimeout(() => setSaveStatus("idle"), 3000);
+        }
+    };
+
+    const handleProviderChange = async (provider: 'openai' | 'groq') => {
+        const newSettings = { ...settings, provider };
+        setSettings(newSettings);
+
+        setSaveStatus("saving");
+        try {
+            await saveSettings(newSettings);
+            setSaveStatus("saved");
+            setTimeout(() => setSaveStatus("idle"), 2000);
+        } catch (error) {
+            console.error("Failed to save provider:", error);
+            setSaveStatus("error");
+            setTimeout(() => setSaveStatus("idle"), 3000);
+        }
+    };
+
     return (
         <div className="space-y-6">
             <div>
@@ -95,11 +133,87 @@ export function SettingsView() {
             <div className="grid gap-6">
                 <Card>
                     <CardHeader>
-                        <CardTitle>API Configuration</CardTitle>
-                        <CardDescription>Configure your OpenAI API key for transcription and cleanup.</CardDescription>
+                        <CardTitle className="flex items-center gap-2">
+                            <Zap className="h-5 w-5" />
+                            AI Provider
+                        </CardTitle>
+                        <CardDescription>Choose your transcription and cleanup provider.</CardDescription>
                     </CardHeader>
-                    <CardContent className="space-y-4">
-                        <div className="space-y-2">
+                    <CardContent className="space-y-6">
+                        {/* Provider Selection */}
+                        <div className="space-y-3">
+                            <Label>Provider</Label>
+                            <div className="grid grid-cols-2 gap-3">
+                                <button
+                                    onClick={() => handleProviderChange('groq')}
+                                    className={`p-4 rounded-lg border-2 text-left transition-all ${
+                                        settings.provider === 'groq'
+                                            ? 'border-primary bg-primary/5'
+                                            : 'border-muted hover:border-muted-foreground/50'
+                                    }`}
+                                    disabled={isLoading}
+                                >
+                                    <div className="font-medium flex items-center gap-2">
+                                        Groq
+                                        <span className="text-xs px-2 py-0.5 bg-green-500/20 text-green-600 dark:text-green-400 rounded-full">
+                                            200x faster
+                                        </span>
+                                    </div>
+                                    <p className="text-xs text-muted-foreground mt-1">
+                                        Whisper Turbo + Llama 3.1 8B
+                                    </p>
+                                </button>
+                                <button
+                                    onClick={() => handleProviderChange('openai')}
+                                    className={`p-4 rounded-lg border-2 text-left transition-all ${
+                                        settings.provider === 'openai'
+                                            ? 'border-primary bg-primary/5'
+                                            : 'border-muted hover:border-muted-foreground/50'
+                                    }`}
+                                    disabled={isLoading}
+                                >
+                                    <div className="font-medium">OpenAI</div>
+                                    <p className="text-xs text-muted-foreground mt-1">
+                                        Whisper + GPT-4o-mini
+                                    </p>
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Groq API Key */}
+                        <div className={`space-y-2 ${settings.provider !== 'groq' ? 'opacity-50' : ''}`}>
+                            <Label htmlFor="groqKey">Groq API Key</Label>
+                            <div className="flex gap-2">
+                                <div className="relative flex-1">
+                                    <Input
+                                        id="groqKey"
+                                        type={showGroqKey ? "text" : "password"}
+                                        placeholder="gsk_..."
+                                        value={groqKeyInput}
+                                        onChange={(e) => setGroqKeyInput(e.target.value)}
+                                        disabled={isLoading}
+                                    />
+                                    <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="sm"
+                                        className="absolute right-0 top-0 h-full px-3 hover:bg-transparent"
+                                        onClick={() => setShowGroqKey(!showGroqKey)}
+                                    >
+                                        {showGroqKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                                    </Button>
+                                </div>
+                                <Button onClick={handleSaveGroqKey} disabled={isLoading || saveStatus === "saving"}>
+                                    {saveStatus === "saving" ? "Saving..." : "Save"}
+                                </Button>
+                            </div>
+                            <p className="text-xs text-muted-foreground">
+                                Get your free API key from <a href="https://console.groq.com/keys" target="_blank" rel="noopener noreferrer" className="underline">console.groq.com</a>
+                            </p>
+                        </div>
+
+                        {/* OpenAI API Key */}
+                        <div className={`space-y-2 ${settings.provider !== 'openai' ? 'opacity-50' : ''}`}>
                             <Label htmlFor="apiKey">OpenAI API Key</Label>
                             <div className="flex gap-2">
                                 <div className="relative flex-1">
