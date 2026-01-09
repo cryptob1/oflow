@@ -946,12 +946,36 @@ class VoiceDictationServer:
     def _start_recording(self):
         self.is_recording = True
         self.audio_data = []
-        notify("oFlow is listening", 1000)
+        self._show_overlay()
         logger.info("Recording started")
+
+    def _show_overlay(self):
+        """Show recording indicator."""
+        # Simple notification - clean and minimal
+        try:
+            subprocess.run(
+                ["notify-send", "-t", "1500", "-h", "string:x-canonical-private-synchronous:oflow", "Recording..."],
+                stderr=subprocess.DEVNULL,
+                check=False,
+            )
+        except Exception:
+            pass
+
+    def _hide_overlay(self):
+        """Hide recording indicator."""
+        # Close notification by sending empty one with same sync tag
+        try:
+            subprocess.run(
+                ["notify-send", "-t", "1", "-h", "string:x-canonical-private-synchronous:oflow", ""],
+                stderr=subprocess.DEVNULL,
+                check=False,
+            )
+        except Exception:
+            pass
 
     def _stop_recording(self):
         self.is_recording = False
-        # No notification - processing happens silently
+        self._hide_overlay()
 
         import time
         time.sleep(0.15)
