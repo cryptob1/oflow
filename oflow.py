@@ -60,6 +60,9 @@ logger = logging.getLogger(__name__)
 # Unix socket path for IPC with Tauri frontend
 SOCKET_PATH = "/tmp/voice-dictation.sock"
 
+# PID file to ensure only one backend runs at a time
+PID_FILE = "/tmp/oflow.pid"
+
 # Audio configuration
 SAMPLE_RATE = 16000  # 16kHz sample rate (Whisper requirement)
 AUDIO_CHANNELS = 1  # Mono audio
@@ -125,6 +128,56 @@ def load_settings() -> dict:
 # ============================================================================
 # Custom Exceptions
 # ============================================================================
+
+def is_process_running(pid: int) -> bool:
+    """Check if a process with the given PID is running."""
+    try:
+        os.kill(pid, 0)  # Signal 0 checks if process exists
+        return True
+    except (OSError, ProcessLookupError):
+        return False
+
+
+def acquire_pid_lock() -> bool:
+    """
+    Acquire exclusive lock via PID file.
+
+    Returns True if lock acquired (we should run).
+    Returns False if another instance is already running.
+    """
+    # Check if PID file exists
+    if os.path.exists(PID_FILE):
+        try:
+            with open(PID_FILE, 'r') as f:
+                old_pid = int(f.read().strip())
+
+            if is_process_running(old_pid):
+                logger.info(f"Backend already running (PID {old_pid})")
+                return False
+            else:
+                logger.info(f"Stale PID file found (PID {old_pid} not running), cleaning up")
+                os.remove(PID_FILE)
+                if os.path.exists(SOCKET_PATH):
+                    os.remove(SOCKET_PATH)
+        except (ValueError, IOError) as e:
+            logger.warning(f"Error reading PID file: {e}, cleaning up")
+            os.remove(PID_FILE)
+
+    # Write our PID
+    with open(PID_FILE, 'w') as f:
+        f.write(str(os.getpid()))
+
+    return True
+
+
+def release_pid_lock() -> None:
+    """Release the PID file lock."""
+    try:
+        if os.path.exists(PID_FILE):
+            os.remove(PID_FILE)
+    except Exception as e:
+        logger.warning(f"Error removing PID file: {e}")
+
 
 class OflowError(Exception):
     """Base exception for Oflow errors."""
@@ -810,10 +863,13 @@ class VoiceDictationServer:
             except Exception:
                 pass
 
+        # Release PID lock
+        release_pid_lock()
+
     def _start_recording(self):
         self.is_recording = True
         self.audio_data = []
-        notify("🎤", 500)  # Brief recording indicator
+        notify("oFlow is listening", 1000)
         logger.info("Recording started")
 
     def _stop_recording(self):
@@ -904,9 +960,15 @@ def main() -> None:
             )
             sys.exit(1)
     else:
+        # Check if another backend is already running
+        if not acquire_pid_lock():
+            logger.info("Another backend is already running, exiting")
+            sys.exit(0)  # Exit successfully - this is expected behavior
+
         try:
             validate_configuration()
         except ConfigurationError as e:
+            release_pid_lock()
             print(f"Configuration error: {e}", file=sys.stderr)
             sys.exit(1)
 
