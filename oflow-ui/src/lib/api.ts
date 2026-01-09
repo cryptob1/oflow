@@ -12,7 +12,11 @@ export interface Settings {
     enableCleanup: boolean;
     enableMemory: boolean;
     openaiApiKey?: string;
+    shortcut?: string;  // e.g., "Super+I", "Ctrl+Shift+Space"
 }
+
+// Default shortcut
+export const DEFAULT_SHORTCUT = "Super+I";
 
 /**
  * Starts recording audio.
@@ -203,7 +207,8 @@ export async function loadSettings(): Promise<Settings> {
         // Return default settings if file doesn't exist
         return {
             enableCleanup: true,
-            enableMemory: false
+            enableMemory: false,
+            shortcut: DEFAULT_SHORTCUT
         };
     }
 }
@@ -234,3 +239,39 @@ export async function clearHistory(): Promise<void> {
         throw new Error(`Failed to clear history: ${error}`);
     }
 }
+
+/**
+ * Gets the current global shortcut.
+ * @returns Promise that resolves with the current shortcut string.
+ */
+export async function getShortcut(): Promise<string> {
+    try {
+        return await invoke<string>('get_shortcut');
+    } catch (error) {
+        console.error('Failed to get shortcut:', error);
+        return DEFAULT_SHORTCUT;
+    }
+}
+
+/**
+ * Sets and registers a new global shortcut.
+ * @param shortcut - The shortcut string (e.g., "Super+I", "Ctrl+Shift+Space").
+ */
+export async function setShortcut(shortcut: string): Promise<void> {
+    try {
+        await invoke('set_shortcut', { shortcut });
+    } catch (error) {
+        throw new Error(`Failed to set shortcut: ${error}`);
+    }
+}
+
+/**
+ * Available shortcut presets.
+ */
+export const SHORTCUT_PRESETS = [
+    { value: "Super+I", label: "Super + I (Default)" },
+    { value: "Ctrl+Shift+Space", label: "Ctrl + Shift + Space" },
+    { value: "Alt+Space", label: "Alt + Space" },
+    { value: "F9", label: "F9" },
+    { value: "Ctrl+Shift+R", label: "Ctrl + Shift + R" },
+] as const;

@@ -5,7 +5,7 @@ import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { loadSettings, saveSettings, clearHistory, type Settings } from "@/lib/api";
-import { CheckCircle2, AlertCircle, Eye, EyeOff } from "lucide-react";
+import { CheckCircle2, AlertCircle, Eye, EyeOff, Shield, Keyboard } from "lucide-react";
 
 export function SettingsView() {
     const [settings, setSettings] = useState<Settings>({
@@ -134,6 +134,28 @@ export function SettingsView() {
 
                 <Card>
                     <CardHeader>
+                        <CardTitle className="flex items-center gap-2">
+                            <Keyboard className="h-5 w-5" />
+                            Keyboard Shortcut
+                        </CardTitle>
+                        <CardDescription>Push-to-talk hotkey for voice recording.</CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                        <div className="p-3 bg-muted rounded-lg">
+                            <p className="text-sm font-medium mb-2">Current Shortcut: <code className="px-2 py-1 bg-background rounded">Super + I</code></p>
+                            <p className="text-xs text-muted-foreground">
+                                Hold to record, release to stop. On Hyprland/Wayland, this is configured via your window manager bindings.
+                            </p>
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                            <p className="font-medium mb-1">To change the shortcut:</p>
+                            <p>Edit <code className="px-1 bg-muted rounded">~/.config/hypr/bindings.conf</code></p>
+                        </div>
+                    </CardContent>
+                </Card>
+
+                <Card>
+                    <CardHeader>
                         <CardTitle>Pipeline Configuration</CardTitle>
                         <CardDescription>Control how your audio is processed.</CardDescription>
                     </CardHeader>
@@ -179,10 +201,19 @@ export function SettingsView() {
 
                 <Card>
                     <CardHeader>
-                        <CardTitle>Storage</CardTitle>
-                        <CardDescription>Manage your local data.</CardDescription>
+                        <CardTitle className="flex items-center gap-2">
+                            <Shield className="h-5 w-5" />
+                            Storage & Privacy
+                        </CardTitle>
+                        <CardDescription>Your data stays on your device.</CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-4">
+                        <div className="p-3 bg-green-500/10 border border-green-500/20 rounded-lg">
+                            <p className="text-sm text-green-700 dark:text-green-400">
+                                <strong>Your Data, Your Control</strong> - All transcripts and settings are stored locally on your machine.
+                                oflow has no cloud backend or analytics. Audio is sent only to OpenAI for transcription, nothing else.
+                            </p>
+                        </div>
                         <div className="space-y-1">
                             <Label>Data Location</Label>
                             <div className="p-2 bg-muted rounded-md text-sm font-mono">

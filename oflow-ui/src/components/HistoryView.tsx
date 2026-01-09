@@ -2,7 +2,8 @@ import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Input } from "@/components/ui/input";
-import { Search, Loader2, AlertCircle } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Search, Loader2, AlertCircle, Copy, Check } from "lucide-react";
 import { getTranscripts, type Transcript } from "@/lib/api";
 
 export function HistoryView() {
@@ -11,6 +12,17 @@ export function HistoryView() {
     const [searchQuery, setSearchQuery] = useState("");
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
+
+    const copyToClipboard = async (text: string, index: number) => {
+        try {
+            await navigator.clipboard.writeText(text);
+            setCopiedIndex(index);
+            setTimeout(() => setCopiedIndex(null), 2000);
+        } catch (err) {
+            console.error("Failed to copy:", err);
+        }
+    };
 
     useEffect(() => {
         const loadTranscripts = async () => {
@@ -93,9 +105,22 @@ export function HistoryView() {
                                     const formattedDate = date.toLocaleString();
                                     
                                     return (
-                                        <div key={index} className="flex flex-col gap-2 p-4 rounded-lg border bg-card hover:bg-accent/50 transition-colors">
+                                        <div key={index} className="flex flex-col gap-2 p-4 rounded-lg border bg-card hover:bg-accent/50 transition-colors group">
                                             <div className="flex items-center justify-between">
                                                 <span className="text-sm text-muted-foreground">{formattedDate}</span>
+                                                <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    className="h-8 w-8 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                                                    onClick={() => copyToClipboard(item.cleaned, index)}
+                                                    title="Copy to clipboard"
+                                                >
+                                                    {copiedIndex === index ? (
+                                                        <Check className="h-4 w-4 text-green-500" />
+                                                    ) : (
+                                                        <Copy className="h-4 w-4" />
+                                                    )}
+                                                </Button>
                                             </div>
                                             <div>
                                                 <p className="font-medium">{item.cleaned}</p>

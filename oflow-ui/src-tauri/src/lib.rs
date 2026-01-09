@@ -3,15 +3,77 @@ mod error;
 mod socket_client;
 
 use socket_client::{is_backend_running, send_command};
-use tauri::{
-    AppHandle, Manager, State, Window,
-};
+use std::sync::Arc;
+use tauri::{AppHandle, Manager, State, Window};
+use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 use tauri_plugin_shell::ShellExt;
+use tokio::sync::Mutex;
 
-/// State to track recording status.
-#[derive(Default)]
-struct RecordingState {
+/// Default shortcut key
+const DEFAULT_SHORTCUT: &str = "Super+I";
+
+/// Settings file path relative to home directory
+const SETTINGS_PATH: &str = ".oflow/settings.json";
+
+/// State to track recording status and current shortcut.
+struct AppState {
     is_recording: bool,
+    current_shortcut: String,
+}
+
+impl Default for AppState {
+    fn default() -> Self {
+        Self {
+            is_recording: false,
+            current_shortcut: DEFAULT_SHORTCUT.to_string(),
+        }
+    }
+}
+
+/// Settings structure matching the JSON file.
+#[derive(serde::Deserialize, serde::Serialize, Default)]
+#[serde(rename_all = "camelCase")]
+struct Settings {
+    #[serde(default)]
+    enable_cleanup: bool,
+    #[serde(default)]
+    enable_memory: bool,
+    #[serde(default)]
+    openai_api_key: Option<String>,
+    #[serde(default)]
+    shortcut: Option<String>,
+}
+
+/// Reads settings from the settings file.
+fn read_settings() -> Settings {
+    let home = dirs::home_dir().unwrap_or_default();
+    let settings_path = home.join(SETTINGS_PATH);
+
+    if let Ok(contents) = std::fs::read_to_string(&settings_path) {
+        serde_json::from_str(&contents).unwrap_or_default()
+    } else {
+        Settings::default()
+    }
+}
+
+/// Writes settings to the settings file.
+fn write_settings(settings: &Settings) -> Result<(), String> {
+    let home = dirs::home_dir().ok_or("Could not find home directory")?;
+    let settings_path = home.join(SETTINGS_PATH);
+
+    // Ensure directory exists
+    if let Some(parent) = settings_path.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| format!("Failed to create settings directory: {}", e))?;
+    }
+
+    let contents = serde_json::to_string_pretty(settings)
+        .map_err(|e| format!("Failed to serialize settings: {}", e))?;
+
+    std::fs::write(&settings_path, contents)
+        .map_err(|e| format!("Failed to write settings: {}", e))?;
+
+    Ok(())
 }
 
 /// Starts recording audio.
@@ -48,11 +110,11 @@ async fn stop_recording() -> Result<(), String> {
 /// or an error message if the operation failed.
 #[tauri::command]
 async fn toggle_recording(
-    state: State<'_, tauri::async_runtime::Mutex<RecordingState>>,
+    state: State<'_, Mutex<AppState>>,
 ) -> Result<bool, String> {
-    let mut recording_state = state.lock().await;
-    
-    let command = if recording_state.is_recording {
+    let mut app_state = state.lock().await;
+
+    let command = if app_state.is_recording {
         "stop"
     } else {
         "start"
@@ -62,8 +124,8 @@ async fn toggle_recording(
         .await
         .map_err(|e| format!("Failed to toggle recording: {}", e))?;
 
-    recording_state.is_recording = !recording_state.is_recording;
-    Ok(recording_state.is_recording)
+    app_state.is_recording = !app_state.is_recording;
+    Ok(app_state.is_recording)
 }
 
 /// Gets the current recording status.
@@ -74,10 +136,55 @@ async fn toggle_recording(
 /// Note: This returns the local state, not the actual backend state.
 #[tauri::command]
 async fn get_recording_status(
-    state: State<'_, tauri::async_runtime::Mutex<RecordingState>>,
+    state: State<'_, Mutex<AppState>>,
 ) -> Result<bool, String> {
-    let recording_state = state.lock().await;
-    Ok(recording_state.is_recording)
+    let app_state = state.lock().await;
+    Ok(app_state.is_recording)
+}
+
+/// Gets the current global shortcut.
+#[tauri::command]
+async fn get_shortcut(
+    state: State<'_, Mutex<AppState>>,
+) -> Result<String, String> {
+    let app_state = state.lock().await;
+    Ok(app_state.current_shortcut.clone())
+}
+
+/// Sets and registers a new global shortcut.
+#[tauri::command]
+async fn set_shortcut(
+    app: AppHandle,
+    state: State<'_, Mutex<AppState>>,
+    shortcut: String,
+) -> Result<(), String> {
+    // Parse the new shortcut to validate it
+    let new_shortcut: Shortcut = shortcut
+        .parse()
+        .map_err(|e| format!("Invalid shortcut format '{}': {}", shortcut, e))?;
+
+    let mut app_state = state.lock().await;
+
+    // Unregister the old shortcut if it exists
+    if let Ok(old_shortcut) = app_state.current_shortcut.parse::<Shortcut>() {
+        let _ = app.global_shortcut().unregister(old_shortcut);
+    }
+
+    // Register the new shortcut
+    app.global_shortcut()
+        .register(new_shortcut)
+        .map_err(|e| format!("Failed to register shortcut: {}", e))?;
+
+    // Update state
+    app_state.current_shortcut = shortcut.clone();
+
+    // Save to settings file
+    let mut settings = read_settings();
+    settings.shortcut = Some(shortcut);
+    write_settings(&settings)?;
+
+    log::info!("Shortcut updated to: {}", app_state.current_shortcut);
+    Ok(())
 }
 
 /// Checks if the backend is running.
@@ -116,7 +223,7 @@ fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
     use tauri::tray::{TrayIconBuilder, TrayIconEvent};
 
     TrayIconBuilder::new()
-        .tooltip("Oflow")
+        .tooltip("oflow")
         .icon(
             app.default_window_icon()
                 .ok_or("Failed to get default icon")?
@@ -146,9 +253,60 @@ fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Read settings to get the configured shortcut
+    let settings = read_settings();
+    let initial_shortcut = settings
+        .shortcut
+        .unwrap_or_else(|| DEFAULT_SHORTCUT.to_string());
+
+    // Create shared app state
+    let app_state = Arc::new(Mutex::new(AppState {
+        is_recording: false,
+        current_shortcut: initial_shortcut.clone(),
+    }));
+
+    // Clone for the shortcut handler
+    let handler_state = app_state.clone();
+
     tauri::Builder::default()
-        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
-        .setup(|app| {
+        .plugin(
+            tauri_plugin_global_shortcut::Builder::new()
+                .with_handler(move |_app, _shortcut, event| {
+                    let state = handler_state.clone();
+                    match event.state() {
+                        ShortcutState::Pressed => {
+                            // Start recording on key press
+                            tauri::async_runtime::spawn(async move {
+                                let mut app_state = state.lock().await;
+                                if !app_state.is_recording {
+                                    if let Err(e) = send_command("start").await {
+                                        log::error!("Failed to start recording: {}", e);
+                                    } else {
+                                        app_state.is_recording = true;
+                                        log::info!("Recording started (shortcut pressed)");
+                                    }
+                                }
+                            });
+                        }
+                        ShortcutState::Released => {
+                            // Stop recording on key release
+                            tauri::async_runtime::spawn(async move {
+                                let mut app_state = state.lock().await;
+                                if app_state.is_recording {
+                                    if let Err(e) = send_command("stop").await {
+                                        log::error!("Failed to stop recording: {}", e);
+                                    } else {
+                                        app_state.is_recording = false;
+                                        log::info!("Recording stopped (shortcut released)");
+                                    }
+                                }
+                            });
+                        }
+                    }
+                })
+                .build(),
+        )
+        .setup(move |app| {
             // Initialize plugins
             if cfg!(debug_assertions) {
                 app.handle().plugin(
@@ -160,8 +318,19 @@ pub fn run() {
             app.handle().plugin(tauri_plugin_fs::init())?;
             app.handle().plugin(tauri_plugin_shell::init())?;
 
-            // Initialize recording state
-            app.manage(tauri::async_runtime::Mutex::new(RecordingState::default()));
+            // Initialize app state (share with handler)
+            app.manage(app_state.clone());
+
+            // Register the initial shortcut
+            if let Ok(shortcut) = initial_shortcut.parse::<Shortcut>() {
+                if let Err(e) = app.global_shortcut().register(shortcut) {
+                    log::error!("Failed to register initial shortcut '{}': {}", initial_shortcut, e);
+                } else {
+                    log::info!("Registered global shortcut: {}", initial_shortcut);
+                }
+            } else {
+                log::error!("Invalid shortcut format: {}", initial_shortcut);
+            }
 
             // Setup system tray
             setup_tray(app.handle())?;
@@ -175,12 +344,12 @@ pub fn run() {
             window.show().map_err(|e| {
                 format!("Failed to show window on startup: {}", e)
             })?;
-            
+
             // Try to bring window to front
             window.set_focus().map_err(|e| {
                 format!("Failed to focus window on startup: {}", e)
             })?;
-            
+
             log::info!("Window shown and focused");
 
             // Handle window close - minimize to tray instead of quitting
@@ -233,7 +402,9 @@ pub fn run() {
             get_recording_status,
             check_backend_status,
             show_window,
-            hide_window
+            hide_window,
+            get_shortcut,
+            set_shortcut
         ])
         .run(tauri::generate_context!())
         .map_err(|e| {

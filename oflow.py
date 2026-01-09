@@ -813,12 +813,12 @@ class VoiceDictationServer:
     def _start_recording(self):
         self.is_recording = True
         self.audio_data = []
-        notify("🎤 Recording...", 1000)
+        notify("🎤", 500)  # Brief recording indicator
         logger.info("Recording started")
 
     def _stop_recording(self):
         self.is_recording = False
-        notify("⏹️ Processing...", 1000)
+        # No notification - processing happens silently
 
         import time
         time.sleep(0.15)
@@ -834,25 +834,15 @@ class VoiceDictationServer:
     async def _process_recording(self):
         audio = np.concatenate(self.audio_data, axis=0).flatten()
 
-        notify("🎙️ Transcribing...", 1500)
-
         async for event in process_audio_with_graph(audio):
             if event.type == EventType.STT_OUTPUT:
                 text = event.data
-                
-                # Always type the text
                 type_text(text)
-                
-                if DEBUG_MODE:
-                    # Show detailed info in debug mode
-                    display_text = text[:200] + "..." if len(text) > 200 else text
-                    notify(f"✓ {display_text}", 3000)
-                else:
-                    display_text = text[:50] + "..." if len(text) > 50 else text
-                    notify(f"✓ {display_text}", 2000)
+                # Text is typed directly - no notification needed
+                logger.debug(f"Transcribed: {text[:50]}...")
 
             elif event.type == EventType.STT_ERROR:
-                notify(f"❌ {event.error}", 2000)
+                notify(f"❌ Error", 1500)  # Only notify on errors
                 logger.error(f"Transcription error: {event.error}")
 
     def run(self):
