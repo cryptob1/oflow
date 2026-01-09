@@ -218,21 +218,46 @@ async fn hide_window(window: Window) -> Result<(), String> {
     Ok(())
 }
 
-/// Sets up the system tray icon.
+/// Sets up the system tray icon with context menu.
 fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
-    use tauri::tray::{TrayIconBuilder, TrayIconEvent};
+    use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
+    use tauri::menu::{MenuBuilder, MenuItemBuilder};
+
+    // Create context menu
+    let show_item = MenuItemBuilder::with_id("show", "Show").build(app)?;
+    let quit_item = MenuItemBuilder::with_id("quit", "Quit").build(app)?;
+    let menu = MenuBuilder::new(app)
+        .item(&show_item)
+        .separator()
+        .item(&quit_item)
+        .build()?;
 
     TrayIconBuilder::new()
-        .tooltip("oflow")
+        .tooltip("oflow - Voice Dictation")
         .icon(
             app.default_window_icon()
                 .ok_or("Failed to get default icon")?
                 .clone(),
         )
-        .on_tray_icon_event(move |tray, event| {
+        .menu(&menu)
+        .on_menu_event(|app, event| {
+            match event.id().as_ref() {
+                "show" => {
+                    if let Some(window) = app.get_webview_window("main") {
+                        let _ = window.show();
+                        let _ = window.set_focus();
+                    }
+                }
+                "quit" => {
+                    app.exit(0);
+                }
+                _ => {}
+            }
+        })
+        .on_tray_icon_event(|tray, event| {
             if let TrayIconEvent::Click {
-                button: tauri::tray::MouseButton::Left,
-                button_state: _,
+                button: MouseButton::Left,
+                button_state: MouseButtonState::Up,
                 ..
             } = event
             {
@@ -248,6 +273,7 @@ fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
         })
         .build(app)?;
 
+    log::info!("System tray initialized");
     Ok(())
 }
 
@@ -332,8 +358,10 @@ pub fn run() {
                 log::error!("Invalid shortcut format: {}", initial_shortcut);
             }
 
-            // Setup system tray
-            setup_tray(app.handle())?;
+            // Setup system tray (non-fatal if it fails)
+            if let Err(e) = setup_tray(app.handle()) {
+                log::error!("Failed to setup system tray: {}", e);
+            }
 
             // Get main window
             let window = app
