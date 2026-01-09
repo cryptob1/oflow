@@ -68,8 +68,8 @@ PID_FILE = "/tmp/oflow.pid"
 SAMPLE_RATE = 16000  # 16kHz sample rate (Whisper requirement)
 AUDIO_CHANNELS = 1  # Mono audio
 NORMALIZATION_TARGET = 0.95  # Normalize audio to 95% of max amplitude
-MIN_AUDIO_DURATION_SECONDS = 0.3  # Minimum recording duration
-MIN_AUDIO_AMPLITUDE = 0.01  # Minimum amplitude to detect speech
+MIN_AUDIO_DURATION_SECONDS = 0.5  # Minimum recording duration (increased to prevent hallucinations)
+MIN_AUDIO_AMPLITUDE = 0.02  # Minimum amplitude to detect speech (increased for better detection)
 
 # API configuration
 API_TIMEOUT_SECONDS = 15.0  # Timeout for API requests
@@ -219,11 +219,16 @@ class APIError(OflowError):
 # LangGraph State
 class TranscriptionState(TypedDict):
     audio_base64: str
+    audio_duration_seconds: float  # Track duration for hallucination detection
     raw_transcript: str
     cleaned_text: str
     timestamp: str
     memories: list[str]
     error: str | None
+
+
+# Hallucination detection: max words per second of audio (speaking rate ~150 WPM = 2.5 WPS)
+MAX_WORDS_PER_SECOND = 4.0  # Allow some margin
 
 
 class EventType(Enum):
@@ -396,6 +401,8 @@ class WhisperAPI:
         data = {
             "model": self.model,
             "response_format": "json",
+            "language": "en",  # Specify language to reduce hallucinations
+            "prompt": "",  # Empty prompt - just transcribe what's said
         }
 
         try:
@@ -453,19 +460,21 @@ class TextCleanupAgent:
         memory_context = ""
         if memories:
             memory_context = f"\n\nUser context (learned patterns):\n" + "\n".join(f"- {m}" for m in memories[:5])
-        
-        prompt = f"""You are a text cleanup assistant. Clean up the following voice transcript:
 
-1. Fix grammar and punctuation
-2. Capitalize proper nouns correctly (e.g., "LangGraph", "GPT-4o-mini", "OpenAI")
-3. Remove filler words like "um", "uh", "like" (when not meaningful)
-4. Preserve the speaker's intent and meaning
-5. Format as clean, readable text{memory_context}
+        prompt = f"""Clean up this voice transcript. ONLY fix minor errors - do NOT add, expand, or change the meaning.
 
-RAW TRANSCRIPT:
-{raw_text}
+Rules:
+- Fix spelling and grammar mistakes
+- Fix punctuation
+- Remove filler words (um, uh, like) if excessive
+- Keep the EXACT same meaning and length
+- Do NOT add new content or expand on what was said
+- Do NOT interpret or elaborate
+- If the input is short, the output should be short{memory_context}
 
-CLEANED TEXT (output ONLY the cleaned text, no preamble):"""
+Input: {raw_text}
+
+Output (cleaned text only, nothing else):"""
 
         response = await self.llm.ainvoke(prompt)
         return response.content.strip()
