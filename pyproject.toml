@@ -77,6 +77,13 @@ testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
+markers = [
+    "unit: Unit tests (no external dependencies)",
+    "integration: Integration tests (require API keys)",
+    "slow: Slow tests (real API calls)",
+]
+# Default: run only unit tests (fast, no API needed)
+addopts = "-m unit -v"
 
 [tool.ruff]
 line-length = 100

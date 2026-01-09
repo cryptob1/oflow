@@ -1,16 +1,18 @@
-.PHONY: help run stop test format lint clean install
+.PHONY: help run stop test test-unit test-integration test-all format lint clean install
 
 help:
 	@echo "Oflow - Voice Dictation for Hyprland/Wayland"
 	@echo ""
 	@echo "Available targets:"
-	@echo "  make run      - Start the voice dictation server"
-	@echo "  make stop     - Stop the voice dictation server"
-	@echo "  make test     - Run test suite"
-	@echo "  make format   - Format code with ruff"
-	@echo "  make lint     - Lint code with ruff"
-	@echo "  make install  - Run setup script"
-	@echo "  make clean    - Remove cache files"
+	@echo "  make run             - Start the voice dictation server"
+	@echo "  make stop            - Stop the voice dictation server"
+	@echo "  make test            - Run unit tests (fast, no API needed)"
+	@echo "  make test-integration - Run integration tests (requires API keys)"
+	@echo "  make test-all        - Run all tests"
+	@echo "  make format          - Format code with ruff"
+	@echo "  make lint            - Lint code with ruff"
+	@echo "  make install         - Run setup script"
+	@echo "  make clean           - Remove cache files"
 
 run:
 	@echo "Starting Oflow..."
@@ -21,8 +23,18 @@ stop:
 	@pkill -f oflow || true
 
 test:
-	@echo "Running tests..."
-	@python tests/test_robustness.py
+	@echo "Running unit tests..."
+	@.venv/bin/pytest -m unit -v
+
+test-unit: test
+
+test-integration:
+	@echo "Running integration tests (requires API keys)..."
+	@.venv/bin/pytest -m integration -v
+
+test-all:
+	@echo "Running all tests..."
+	@.venv/bin/pytest -v
 
 format:
 	@echo "Formatting code..."
