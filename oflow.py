@@ -899,7 +899,7 @@ class VoiceDictationServer:
         self.socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         self.socket.bind(SOCKET_PATH)
         self.socket.listen(1)
-        os.chmod(SOCKET_PATH, 0o666)
+        os.chmod(SOCKET_PATH, 0o600)
 
         signal.signal(signal.SIGINT, self._signal_handler)
         signal.signal(signal.SIGTERM, self._signal_handler)
@@ -946,15 +946,28 @@ class VoiceDictationServer:
     def _start_recording(self):
         self.is_recording = True
         self.audio_data = []
+        self._play_beep()
         self._show_overlay()
         logger.info("Recording started")
 
+    def _play_beep(self):
+        """Play a short beep to indicate recording started."""
+        try:
+            duration = 0.1  # 100ms
+            freq = 800  # Hz
+            t = np.linspace(0, duration, int(SAMPLE_RATE * duration), False)
+            # Gentle beep with fade in/out
+            envelope = np.sin(np.pi * t / duration)  # Smooth envelope
+            beep = np.sin(2 * np.pi * freq * t) * envelope * 0.4
+            sd.play(beep.astype(np.float32), SAMPLE_RATE, blocking=True)
+        except Exception as e:
+            logger.debug(f"Beep failed: {e}")
+
     def _show_overlay(self):
-        """Show recording indicator."""
-        # Simple notification - clean and minimal
+        """Show recording notification."""
         try:
             subprocess.run(
-                ["notify-send", "-t", "1500", "-h", "string:x-canonical-private-synchronous:oflow", "Recording..."],
+                ["notify-send", "-t", "2000", "oflow", "Recording..."],
                 stderr=subprocess.DEVNULL,
                 check=False,
             )
@@ -962,16 +975,8 @@ class VoiceDictationServer:
             pass
 
     def _hide_overlay(self):
-        """Hide recording indicator."""
-        # Close notification by sending empty one with same sync tag
-        try:
-            subprocess.run(
-                ["notify-send", "-t", "1", "-h", "string:x-canonical-private-synchronous:oflow", ""],
-                stderr=subprocess.DEVNULL,
-                check=False,
-            )
-        except Exception:
-            pass
+        """Dismiss recording notification (mako auto-dismisses, this is a no-op)."""
+        pass
 
     def _stop_recording(self):
         self.is_recording = False

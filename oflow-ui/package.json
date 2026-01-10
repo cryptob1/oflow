@@ -1,7 +1,13 @@
 {
   "name": "oflow-ui",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.2.0",
+  "description": "Voice dictation UI for oflow - Wispr Flow alternative for Linux",
+  "author": "CryptoB1 <cryptob1@users.noreply.github.com>",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/CryptoB1/oflow"
+  },
   "type": "module",
   "scripts": {
     "dev": "vite",
