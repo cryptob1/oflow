@@ -30,6 +30,7 @@ import signal
 import socket
 import subprocess
 import sys
+import threading
 import wave
 from dataclasses import dataclass
 from datetime import datetime
@@ -897,12 +898,265 @@ def type_text(text: str) -> None:
         logger.warning("No text input method available (wtype, xdotool, or wl-copy)")
 
 
+class ChunkedTranscriber:
+    """
+    Handles chunked audio transcription for low-latency results.
+
+    Sends audio chunks to Groq while recording, so by the time the user
+    releases the key, most audio is already transcribed.
+    """
+
+    CHUNK_SECONDS = 0.75  # Send chunks every 0.75 seconds
+
+    def __init__(self, api_key: str, provider: str = "groq"):
+        self.api_key = api_key
+        self.provider = provider
+        self.transcripts: list[str] = []
+        self.pending_audio: list[np.ndarray] = []
+        self._client: httpx.AsyncClient | None = None
+
+        if provider == "groq":
+            self.whisper_url = GROQ_WHISPER_URL
+            self.whisper_model = "whisper-large-v3-turbo"
+            self.llm_url = "https://api.groq.com/openai/v1/chat/completions"
+            self.llm_model = "llama-3.1-8b-instant"
+        else:
+            self.whisper_url = OPENAI_WHISPER_URL
+            self.whisper_model = "whisper-1"
+            self.llm_url = "https://api.openai.com/v1/chat/completions"
+            self.llm_model = "gpt-4o-mini"
+
+    def _get_client(self) -> httpx.AsyncClient:
+        """Get or create HTTP client for current event loop."""
+        if self._client is None or self._client.is_closed:
+            self._client = httpx.AsyncClient(timeout=30.0)
+        return self._client
+
+    async def _transcribe_chunk(self, audio: np.ndarray) -> str:
+        """Transcribe a single audio chunk."""
+        # Normalize and convert to WAV
+        if len(audio) == 0:
+            return ""
+
+        normalized = AudioProcessor.normalize(audio)
+        audio_int16 = (normalized * 32767).astype(np.int16)
+
+        buffer = io.BytesIO()
+        with wave.open(buffer, "wb") as wav_file:
+            wav_file.setnchannels(1)
+            wav_file.setsampwidth(2)
+            wav_file.setframerate(SAMPLE_RATE)
+            wav_file.writeframes(audio_int16.tobytes())
+        buffer.seek(0)
+        audio_bytes = buffer.read()
+
+        try:
+            client = self._get_client()
+            response = await client.post(
+                self.whisper_url,
+                headers={"Authorization": f"Bearer {self.api_key}"},
+                files={"file": ("audio.wav", audio_bytes, "audio/wav")},
+                data={
+                    "model": self.whisper_model,
+                    "response_format": "json",
+                    "language": "en",
+                },
+            )
+            if response.status_code == 200:
+                return response.json().get("text", "").strip()
+            else:
+                logger.error(f"Whisper API error: {response.status_code}")
+                return ""
+        except Exception as e:
+            logger.error(f"Transcription error: {e}")
+            return ""
+
+    async def _cleanup_text(self, text: str) -> str:
+        """Clean up text using LLM."""
+        if not text.strip():
+            return ""
+
+        try:
+            client = self._get_client()
+            response = await client.post(
+                self.llm_url,
+                headers={"Authorization": f"Bearer {self.api_key}"},
+                json={
+                    "model": self.llm_model,
+                    "messages": [
+                        {"role": "system", "content": "Fix grammar/punctuation. Output only the cleaned text, nothing else."},
+                        {"role": "user", "content": text}
+                    ],
+                    "temperature": 0.3,
+                    "max_tokens": 500,
+                },
+            )
+            if response.status_code == 200:
+                return response.json()["choices"][0]["message"]["content"].strip()
+            return text  # Return original on error
+        except Exception as e:
+            logger.error(f"Cleanup error: {e}")
+            return text
+
+    def add_audio(self, audio: np.ndarray):
+        """Add audio data to pending buffer."""
+        self.pending_audio.append(audio)
+
+    def get_pending_duration(self) -> float:
+        """Get duration of pending audio in seconds."""
+        if not self.pending_audio:
+            return 0.0
+        total_samples = sum(len(a) for a in self.pending_audio)
+        return total_samples / SAMPLE_RATE
+
+    async def process_pending_chunk(self) -> str | None:
+        """Process pending audio if we have enough for a chunk."""
+        if self.get_pending_duration() < self.CHUNK_SECONDS:
+            return None
+
+        # Combine pending audio into a chunk
+        chunk = np.concatenate(self.pending_audio, axis=0).flatten()
+        self.pending_audio = []
+
+        # Validate
+        valid, _ = AudioValidator.validate(chunk)
+        if not valid:
+            return ""
+
+        # Transcribe
+        text = await self._transcribe_chunk(chunk)
+        if text:
+            self.transcripts.append(text)
+            logger.info(f"Chunk transcribed: {text[:30]}...")
+        return text
+
+    async def finalize(self, enable_cleanup: bool = True) -> str:
+        """
+        Finalize transcription: process remaining audio and cleanup.
+
+        This is called when the user releases the key. It processes
+        the last chunk and runs cleanup in parallel for speed.
+        """
+        import time
+        start = time.perf_counter()
+
+        # Create a fresh client for this event loop
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            # Get any remaining audio
+            final_audio = None
+            if self.pending_audio:
+                final_audio = np.concatenate(self.pending_audio, axis=0).flatten()
+                self.pending_audio = []
+
+            previous_text = " ".join(self.transcripts)
+
+            # Task 1: Transcribe final chunk (if any)
+            async def transcribe_final():
+                if final_audio is not None and len(final_audio) > SAMPLE_RATE * 0.1:
+                    valid, _ = AudioValidator.validate(final_audio)
+                    if valid:
+                        return await self._transcribe_with_client(client, final_audio)
+                return ""
+
+            # Task 2: Cleanup previous transcripts (if enabled)
+            async def cleanup_previous():
+                if enable_cleanup and previous_text.strip():
+                    return await self._cleanup_with_client(client, previous_text)
+                return previous_text
+
+            # Run in parallel
+            if enable_cleanup:
+                final_text, cleaned_previous = await asyncio.gather(
+                    transcribe_final(),
+                    cleanup_previous()
+                )
+            else:
+                final_text = await transcribe_final()
+                cleaned_previous = previous_text
+
+            # Combine results
+            if final_text:
+                result = (cleaned_previous + " " + final_text).strip()
+            else:
+                result = cleaned_previous.strip()
+
+        latency = (time.perf_counter() - start) * 1000
+        logger.info(f"Finalize latency: {latency:.0f}ms")
+
+        return result
+
+    async def _transcribe_with_client(self, client: httpx.AsyncClient, audio: np.ndarray) -> str:
+        """Transcribe audio with provided client."""
+        if len(audio) == 0:
+            return ""
+
+        normalized = AudioProcessor.normalize(audio)
+        audio_int16 = (normalized * 32767).astype(np.int16)
+
+        buffer = io.BytesIO()
+        with wave.open(buffer, "wb") as wav_file:
+            wav_file.setnchannels(1)
+            wav_file.setsampwidth(2)
+            wav_file.setframerate(SAMPLE_RATE)
+            wav_file.writeframes(audio_int16.tobytes())
+        buffer.seek(0)
+
+        try:
+            response = await client.post(
+                self.whisper_url,
+                headers={"Authorization": f"Bearer {self.api_key}"},
+                files={"file": ("audio.wav", buffer.read(), "audio/wav")},
+                data={"model": self.whisper_model, "response_format": "json", "language": "en"},
+            )
+            if response.status_code == 200:
+                return response.json().get("text", "").strip()
+        except Exception as e:
+            logger.error(f"Final transcription error: {e}")
+        return ""
+
+    async def _cleanup_with_client(self, client: httpx.AsyncClient, text: str) -> str:
+        """Cleanup text with provided client."""
+        try:
+            response = await client.post(
+                self.llm_url,
+                headers={"Authorization": f"Bearer {self.api_key}"},
+                json={
+                    "model": self.llm_model,
+                    "messages": [
+                        {"role": "system", "content": "Fix grammar/punctuation. Output only the cleaned text, nothing else."},
+                        {"role": "user", "content": text}
+                    ],
+                    "temperature": 0.3,
+                    "max_tokens": 500,
+                },
+            )
+            if response.status_code == 200:
+                return response.json()["choices"][0]["message"]["content"].strip()
+        except Exception as e:
+            logger.error(f"Final cleanup error: {e}")
+        return text
+
+    def reset(self):
+        """Reset state for next recording."""
+        self.transcripts = []
+        self.pending_audio = []
+
+    async def close(self):
+        """Close HTTP client."""
+        if self._client and not self._client.is_closed:
+            await self._client.aclose()
+            self._client = None
+
+
 class VoiceDictationServer:
     def __init__(self):
         self._running = True
         self.is_recording = False
         self.audio_queue = queue.Queue()
         self.audio_data = []
+
+        # Persistent HTTP client for connection reuse
+        self._http_client: httpx.AsyncClient | None = None
 
         subprocess.run(
             ["pactl", "set-source-volume", "@DEFAULT_SOURCE@", "150%"],
@@ -928,13 +1182,33 @@ class VoiceDictationServer:
         signal.signal(signal.SIGINT, self._signal_handler)
         signal.signal(signal.SIGTERM, self._signal_handler)
 
-        # Log startup with provider info
+        # Pre-warm HTTP connection
         settings = load_settings()
         provider = settings.get('provider', 'openai')
         if provider == "groq":
-            logger.info("oflow Ready (Groq Whisper Turbo + Llama 3.1 8B) - 200x faster")
+            logger.info("oflow Ready (Groq - optimized mode)")
+            # Pre-warm connection in background
+            asyncio.run(self._prewarm_connection())
         else:
             logger.info("oflow Ready (OpenAI Whisper + GPT-4o-mini)")
+
+    async def _prewarm_connection(self):
+        """Pre-warm HTTP connection to reduce first-request latency."""
+        settings = load_settings()
+        api_key = settings.get('groqApiKey')
+        if not api_key:
+            return
+
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                # Simple models list request to establish connection
+                await client.get(
+                    "https://api.groq.com/openai/v1/models",
+                    headers={"Authorization": f"Bearer {api_key}"},
+                )
+            logger.info("Connection pre-warmed")
+        except Exception as e:
+            logger.debug(f"Pre-warm failed: {e}")
 
     def _audio_callback(self, indata, frames, time_info, status):
         if self.is_recording:
@@ -1007,15 +1281,104 @@ class VoiceDictationServer:
         self._hide_overlay()
 
         import time
-        time.sleep(0.15)
+        time.sleep(0.1)  # Brief pause to collect final audio
 
+        # Drain remaining audio from queue
         while not self.audio_queue.empty():
-            self.audio_data.append(self.audio_queue.get())
+            try:
+                data = self.audio_queue.get_nowait()
+                self.audio_data.append(data)
+            except queue.Empty:
+                break
 
         if self.audio_data:
-            asyncio.run(self._process_recording())
+            start = time.perf_counter()
+            asyncio.run(self._process_parallel_chunks())
+            total_ms = (time.perf_counter() - start) * 1000
+            logger.info(f"Recording stopped (processing: {total_ms:.0f}ms)")
+        else:
+            logger.info("Recording stopped (no audio)")
 
-        logger.info("Recording stopped")
+    async def _process_parallel_chunks(self):
+        """Process audio - use single request for short audio, parallel for long."""
+        import time as time_module
+
+        settings = load_settings()
+        provider = settings.get('provider', 'groq')
+        api_key = settings.get('groqApiKey') if provider == 'groq' else settings.get('openaiApiKey')
+        enable_cleanup = settings.get('enableCleanup', True)
+
+        if not api_key:
+            notify("❌ API key not set", 1500)
+            return
+
+        # Combine all audio
+        audio = np.concatenate(self.audio_data, axis=0).flatten()
+        duration = len(audio) / SAMPLE_RATE
+
+        # Validate
+        valid, error = AudioValidator.validate(audio)
+        if not valid:
+            logger.warning(f"Audio validation failed: {error}")
+            return
+
+        audio = AudioProcessor.normalize(audio)
+
+        async with httpx.AsyncClient(timeout=30.0, limits=httpx.Limits(max_connections=10)) as client:
+            transcriber = ChunkedTranscriber(api_key, provider)
+
+            # For short audio (< 2s), just send it all at once (faster)
+            if duration < 2.0:
+                logger.info(f"Single request mode ({duration:.1f}s audio)")
+                t0 = time_module.perf_counter()
+                raw_text = await transcriber._transcribe_with_client(client, audio)
+                t1 = time_module.perf_counter()
+                logger.info(f"Transcription: {(t1-t0)*1000:.0f}ms")
+            else:
+                # For longer audio, split and process in parallel
+                chunk_seconds = 1.0  # Larger chunks for fewer requests
+                chunk_size = int(SAMPLE_RATE * chunk_seconds)
+                chunks = [audio[i:i+chunk_size] for i in range(0, len(audio), chunk_size)]
+
+                # Merge tiny last chunk
+                if len(chunks) > 1 and len(chunks[-1]) < SAMPLE_RATE * 0.3:
+                    chunks[-2] = np.concatenate([chunks[-2], chunks[-1]])
+                    chunks = chunks[:-1]
+
+                logger.info(f"Parallel mode: {len(chunks)} chunks ({duration:.1f}s audio)")
+                t0 = time_module.perf_counter()
+
+                tasks = [transcriber._transcribe_with_client(client, c) for c in chunks]
+                transcripts = await asyncio.gather(*tasks)
+                raw_text = " ".join(t.strip() for t in transcripts if t.strip())
+
+                t1 = time_module.perf_counter()
+                logger.info(f"Transcription: {(t1-t0)*1000:.0f}ms")
+
+            if not raw_text:
+                logger.warning("No transcription result")
+                return
+
+            # Cleanup (if enabled)
+            if enable_cleanup:
+                t0 = time_module.perf_counter()
+                cleaned_text = await transcriber._cleanup_with_client(client, raw_text)
+                t1 = time_module.perf_counter()
+                logger.info(f"Cleanup: {(t1-t0)*1000:.0f}ms")
+            else:
+                cleaned_text = raw_text
+
+            # Type the result
+            type_text(cleaned_text)
+            logger.info(f"Result: {cleaned_text[:50]}...")
+
+            # Save
+            storage = StorageManager()
+            storage.save_transcript(
+                raw=raw_text,
+                cleaned=cleaned_text,
+                timestamp=datetime.now().isoformat(),
+            )
 
     async def _process_recording(self):
         audio = np.concatenate(self.audio_data, axis=0).flatten()
