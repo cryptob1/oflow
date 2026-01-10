@@ -279,8 +279,11 @@ export async function getShortcut(): Promise<string> {
  */
 export async function setShortcut(shortcut: string): Promise<void> {
     try {
+        console.log('[setShortcut] Setting shortcut to:', shortcut);
         await invoke('set_shortcut', { shortcut });
+        console.log('[setShortcut] Success!');
     } catch (error) {
+        console.error('[setShortcut] Error:', error);
         throw new Error(`Failed to set shortcut: ${error}`);
     }
 }

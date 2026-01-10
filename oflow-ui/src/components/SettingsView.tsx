@@ -323,7 +323,7 @@ export function SettingsView() {
                             </Select>
                         </div>
                         <p className="text-xs text-muted-foreground">
-                            Hold the key to record, release to stop and transcribe.
+                            Hold the key to record, release to stop and transcribe. Changes are applied to Hyprland immediately.
                         </p>
                     </CardContent>
                 </Card>

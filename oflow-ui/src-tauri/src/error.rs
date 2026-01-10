@@ -3,6 +3,7 @@ use thiserror::Error;
 
 /// Errors that can occur when communicating with the Python backend.
 #[derive(Error, Debug)]
+#[allow(dead_code)]
 pub enum SocketError {
     /// Failed to connect to the Unix socket.
     #[error("Failed to connect to backend: {0}")]

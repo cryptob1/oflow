@@ -151,39 +151,94 @@ async fn get_shortcut(
     Ok(app_state.current_shortcut.clone())
 }
 
-/// Sets and registers a new global shortcut.
+/// Sets the keyboard shortcut by updating Hyprland bindings.
+/// On Wayland/Hyprland, we can't use Tauri global shortcuts, so we update the WM config directly.
 #[tauri::command]
 async fn set_shortcut(
-    app: AppHandle,
     state: State<'_, Mutex<AppState>>,
     shortcut: String,
 ) -> Result<(), String> {
-    // Parse the new shortcut to validate it
-    let new_shortcut: Shortcut = shortcut
-        .parse()
-        .map_err(|e| format!("Invalid shortcut format '{}': {}", shortcut, e))?;
+    log::info!("set_shortcut called with: {}", shortcut);
 
-    let mut app_state = state.lock().await;
+    // Update Hyprland bindings file
+    let home = dirs::home_dir().ok_or("Could not find home directory")?;
+    let bindings_file = home.join(".config/hypr/bindings.conf");
 
-    // Unregister the old shortcut if it exists
-    if let Ok(old_shortcut) = app_state.current_shortcut.parse::<Shortcut>() {
-        let _ = app.global_shortcut().unregister(old_shortcut);
+    if !bindings_file.exists() {
+        return Err("Hyprland bindings file not found".to_string());
     }
 
-    // Register the new shortcut
-    app.global_shortcut()
-        .register(new_shortcut)
-        .map_err(|e| format!("Failed to register shortcut: {}", e))?;
+    // Read current bindings
+    let contents = std::fs::read_to_string(&bindings_file)
+        .map_err(|e| format!("Failed to read bindings file: {}", e))?;
+
+    // Remove old oflow bindings
+    let mut new_lines: Vec<&str> = Vec::new();
+    let mut skip_next = false;
+    for line in contents.lines() {
+        if line.contains("# Oflow voice dictation") {
+            skip_next = true;
+            continue;
+        }
+        if skip_next && (line.starts_with("bind") && line.contains("oflow")) {
+            continue;
+        }
+        skip_next = false;
+        new_lines.push(line);
+    }
+
+    // Convert shortcut format (e.g., "Super+I" -> "SUPER, I")
+    let hypr_shortcut = shortcut
+        .replace("Super+", "SUPER, ")
+        .replace("Ctrl+", "CTRL ")
+        .replace("Shift+", "SHIFT ")
+        .replace("Alt+", "ALT ");
+
+    // Get the oflow script path
+    let oflow_dir = std::env::current_dir()
+        .map_err(|e| format!("Failed to get current dir: {}", e))?;
+    let python_path = oflow_dir.join(".venv/bin/python");
+    let script_path = oflow_dir.join("oflow.py");
+
+    // Add new bindings
+    let new_bindings = format!(
+        "\n# Oflow voice dictation (push-to-talk: hold {} to record, release to stop)\nbind = {}, exec, {} {} start\nbindr = {}, exec, {} {} stop",
+        shortcut,
+        hypr_shortcut,
+        python_path.display(),
+        script_path.display(),
+        hypr_shortcut,
+        python_path.display(),
+        script_path.display()
+    );
+
+    let mut final_content = new_lines.join("\n");
+    // Remove trailing empty lines
+    while final_content.ends_with("\n\n") {
+        final_content.pop();
+    }
+    final_content.push_str(&new_bindings);
+    final_content.push('\n');
+
+    // Write updated bindings
+    std::fs::write(&bindings_file, &final_content)
+        .map_err(|e| format!("Failed to write bindings file: {}", e))?;
+
+    // Reload Hyprland
+    let _ = std::process::Command::new("hyprctl")
+        .arg("reload")
+        .output();
 
     // Update state
+    let mut app_state = state.lock().await;
     app_state.current_shortcut = shortcut.clone();
 
     // Save to settings file
     let mut settings = read_settings();
-    settings.shortcut = Some(shortcut);
+    settings.shortcut = Some(shortcut.clone());
     write_settings(&settings)?;
 
-    log::info!("Shortcut updated to: {}", app_state.current_shortcut);
+    log::info!("Shortcut successfully updated to: {}", shortcut);
     Ok(())
 }
 
@@ -297,7 +352,8 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
-                .with_handler(move |_app, _shortcut, event| {
+                .with_handler(move |_app, shortcut, event| {
+                    log::info!("Shortcut event: {:?} - {:?}", shortcut, event.state());
                     let state = handler_state.clone();
                     match event.state() {
                         ShortcutState::Pressed => {
@@ -305,6 +361,7 @@ pub fn run() {
                             tauri::async_runtime::spawn(async move {
                                 let mut app_state = state.lock().await;
                                 if !app_state.is_recording {
+                                    log::info!("Sending 'start' command to backend...");
                                     if let Err(e) = send_command("start").await {
                                         log::error!("Failed to start recording: {}", e);
                                     } else {
@@ -319,6 +376,7 @@ pub fn run() {
                             tauri::async_runtime::spawn(async move {
                                 let mut app_state = state.lock().await;
                                 if app_state.is_recording {
+                                    log::info!("Sending 'stop' command to backend...");
                                     if let Err(e) = send_command("stop").await {
                                         log::error!("Failed to stop recording: {}", e);
                                     } else {
