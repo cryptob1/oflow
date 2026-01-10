@@ -447,37 +447,44 @@ pub fn run() {
                 }
             });
 
-            // Spawn Python backend as sidecar
-            let handle = app.handle().clone();
-            tauri::async_runtime::spawn(async move {
-                match handle
-                    .shell()
-                    .sidecar("oflow-backend")
-                    .map_err(|e| format!("Failed to create sidecar: {}", e))
-                {
-                    Ok(sidecar) => {
-                        match sidecar.spawn() {
-                            Ok((mut rx, _child)) => {
-                                while let Some(event) = rx.recv().await {
-                                    if let tauri_plugin_shell::process::CommandEvent::Stdout(line) =
-                                        event
-                                    {
-                                        if let Ok(text) = String::from_utf8(line) {
-                                            log::info!("Backend: {}", text);
+            // Spawn Python backend as sidecar (only in release mode)
+            // In dev mode, the backend is started by scripts/dev.sh
+            #[cfg(not(debug_assertions))]
+            {
+                let handle = app.handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    match handle
+                        .shell()
+                        .sidecar("oflow-backend")
+                        .map_err(|e| format!("Failed to create sidecar: {}", e))
+                    {
+                        Ok(sidecar) => {
+                            match sidecar.spawn() {
+                                Ok((mut rx, _child)) => {
+                                    while let Some(event) = rx.recv().await {
+                                        if let tauri_plugin_shell::process::CommandEvent::Stdout(line) =
+                                            event
+                                        {
+                                            if let Ok(text) = String::from_utf8(line) {
+                                                log::info!("Backend: {}", text);
+                                            }
                                         }
                                     }
                                 }
-                            }
-                            Err(e) => {
-                                log::error!("Failed to spawn backend: {}", e);
+                                Err(e) => {
+                                    log::error!("Failed to spawn backend: {}", e);
+                                }
                             }
                         }
+                        Err(e) => {
+                            log::error!("{}", e);
+                        }
                     }
-                    Err(e) => {
-                        log::error!("{}", e);
-                    }
-                }
-            });
+                });
+            }
+
+            #[cfg(debug_assertions)]
+            log::info!("Dev mode: backend should be started by scripts/dev.sh");
 
             Ok(())
         })

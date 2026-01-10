@@ -5,7 +5,7 @@ import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { loadSettings, saveSettings, clearHistory, getShortcut, setShortcut, SHORTCUT_PRESETS, type Settings } from "@/lib/api";
-import { CheckCircle2, AlertCircle, Eye, EyeOff, Shield, Keyboard, Zap, Loader2 } from "lucide-react";
+import { Eye, EyeOff, Shield, Keyboard, Zap, Loader2 } from "lucide-react";
 import {
     Select,
     SelectContent,
@@ -13,22 +13,24 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select";
+import { useToast } from "@/components/ui/toast";
 
 export function SettingsView() {
+    const { showToast } = useToast();
     const [settings, setSettings] = useState<Settings>({
         enableCleanup: true,
         enableMemory: false,
         provider: 'groq'
     });
     const [isLoading, setIsLoading] = useState(true);
-    const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+    const [isSaving, setIsSaving] = useState(false);
     const [clearStatus, setClearStatus] = useState<"idle" | "clearing" | "cleared" | "error">("idle");
     const [showApiKey, setShowApiKey] = useState(false);
     const [showGroqKey, setShowGroqKey] = useState(false);
     const [apiKeyInput, setApiKeyInput] = useState("");
     const [groqKeyInput, setGroqKeyInput] = useState("");
     const [currentShortcut, setCurrentShortcut] = useState("Super+I");
-    const [shortcutStatus, setShortcutStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+    const [shortcutSaving, setShortcutSaving] = useState(false);
 
     useEffect(() => {
         const load = async () => {
@@ -57,16 +59,13 @@ export function SettingsView() {
     const handleSettingChange = async (key: keyof Settings, value: boolean) => {
         const newSettings = { ...settings, [key]: value };
         setSettings(newSettings);
-        
-        setSaveStatus("saving");
+
         try {
             await saveSettings(newSettings);
-            setSaveStatus("saved");
-            setTimeout(() => setSaveStatus("idle"), 2000);
+            showToast("Settings saved", "success");
         } catch (error) {
             console.error("Failed to save settings:", error);
-            setSaveStatus("error");
-            setTimeout(() => setSaveStatus("idle"), 3000);
+            showToast("Failed to save settings", "error");
         }
     };
 
@@ -78,44 +77,44 @@ export function SettingsView() {
         setClearStatus("clearing");
         try {
             await clearHistory();
-            setClearStatus("cleared");
-            setTimeout(() => setClearStatus("idle"), 2000);
+            setClearStatus("idle");
+            showToast("History cleared", "success");
         } catch (error) {
             console.error("Failed to clear history:", error);
-            setClearStatus("error");
-            setTimeout(() => setClearStatus("idle"), 3000);
+            setClearStatus("idle");
+            showToast("Failed to clear history", "error");
         }
     };
 
     const handleSaveApiKey = async () => {
         const newSettings = { ...settings, openaiApiKey: apiKeyInput };
         setSettings(newSettings);
+        setIsSaving(true);
 
-        setSaveStatus("saving");
         try {
             await saveSettings(newSettings);
-            setSaveStatus("saved");
-            setTimeout(() => setSaveStatus("idle"), 2000);
+            showToast("OpenAI API key saved", "success");
         } catch (error) {
             console.error("Failed to save API key:", error);
-            setSaveStatus("error");
-            setTimeout(() => setSaveStatus("idle"), 3000);
+            showToast("Failed to save API key", "error");
+        } finally {
+            setIsSaving(false);
         }
     };
 
     const handleSaveGroqKey = async () => {
         const newSettings = { ...settings, groqApiKey: groqKeyInput };
         setSettings(newSettings);
+        setIsSaving(true);
 
-        setSaveStatus("saving");
         try {
             await saveSettings(newSettings);
-            setSaveStatus("saved");
-            setTimeout(() => setSaveStatus("idle"), 2000);
+            showToast("Groq API key saved", "success");
         } catch (error) {
             console.error("Failed to save Groq API key:", error);
-            setSaveStatus("error");
-            setTimeout(() => setSaveStatus("idle"), 3000);
+            showToast("Failed to save API key", "error");
+        } finally {
+            setIsSaving(false);
         }
     };
 
@@ -123,32 +122,28 @@ export function SettingsView() {
         const newSettings = { ...settings, provider };
         setSettings(newSettings);
 
-        setSaveStatus("saving");
         try {
             await saveSettings(newSettings);
-            setSaveStatus("saved");
-            setTimeout(() => setSaveStatus("idle"), 2000);
+            showToast(`Switched to ${provider === 'groq' ? 'Groq' : 'OpenAI'}`, "success");
         } catch (error) {
             console.error("Failed to save provider:", error);
-            setSaveStatus("error");
-            setTimeout(() => setSaveStatus("idle"), 3000);
+            showToast("Failed to change provider", "error");
         }
     };
 
     const handleShortcutChange = async (shortcut: string) => {
-        setShortcutStatus("saving");
+        setShortcutSaving(true);
         try {
             await setShortcut(shortcut);
             setCurrentShortcut(shortcut);
-            // Also save to settings file for persistence
             const newSettings = { ...settings, shortcut };
             await saveSettings(newSettings);
-            setShortcutStatus("saved");
-            setTimeout(() => setShortcutStatus("idle"), 2000);
+            showToast(`Shortcut changed to ${shortcut}`, "success");
         } catch (error) {
             console.error("Failed to set shortcut:", error);
-            setShortcutStatus("error");
-            setTimeout(() => setShortcutStatus("idle"), 3000);
+            showToast("Failed to change shortcut", "error");
+        } finally {
+            setShortcutSaving(false);
         }
     };
 
@@ -232,8 +227,8 @@ export function SettingsView() {
                                         {showGroqKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                                     </Button>
                                 </div>
-                                <Button onClick={handleSaveGroqKey} disabled={isLoading || saveStatus === "saving"}>
-                                    {saveStatus === "saving" ? "Saving..." : "Save"}
+                                <Button onClick={handleSaveGroqKey} disabled={isLoading || isSaving}>
+                                    {isSaving ? "Saving..." : "Save"}
                                 </Button>
                             </div>
                             <p className="text-xs text-muted-foreground">
@@ -264,8 +259,8 @@ export function SettingsView() {
                                         {showApiKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                                     </Button>
                                 </div>
-                                <Button onClick={handleSaveApiKey} disabled={isLoading || saveStatus === "saving"}>
-                                    {saveStatus === "saving" ? "Saving..." : "Save"}
+                                <Button onClick={handleSaveApiKey} disabled={isLoading || isSaving}>
+                                    {isSaving ? "Saving..." : "Save"}
                                 </Button>
                             </div>
                             <p className="text-xs text-muted-foreground">
@@ -284,27 +279,15 @@ export function SettingsView() {
                         <CardDescription>Push-to-talk hotkey for voice recording.</CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-4">
-                        {shortcutStatus === "saved" && (
-                            <div className="flex items-center gap-2 text-sm text-green-600 dark:text-green-400">
-                                <CheckCircle2 className="h-4 w-4" />
-                                Shortcut updated
-                            </div>
-                        )}
-                        {shortcutStatus === "error" && (
-                            <div className="flex items-center gap-2 text-sm text-destructive">
-                                <AlertCircle className="h-4 w-4" />
-                                Failed to update shortcut
-                            </div>
-                        )}
                         <div className="space-y-2">
                             <Label>Global Hotkey</Label>
                             <Select
                                 value={currentShortcut}
                                 onValueChange={handleShortcutChange}
-                                disabled={isLoading || shortcutStatus === "saving"}
+                                disabled={isLoading || shortcutSaving}
                             >
                                 <SelectTrigger className="w-full">
-                                    {shortcutStatus === "saving" ? (
+                                    {shortcutSaving ? (
                                         <div className="flex items-center gap-2">
                                             <Loader2 className="h-4 w-4 animate-spin" />
                                             Updating...
@@ -323,7 +306,7 @@ export function SettingsView() {
                             </Select>
                         </div>
                         <p className="text-xs text-muted-foreground">
-                            Hold the key to record, release to stop and transcribe. Changes are applied to Hyprland immediately.
+                            Hold the key to record, release to stop and transcribe.
                         </p>
                     </CardContent>
                 </Card>
@@ -334,18 +317,6 @@ export function SettingsView() {
                         <CardDescription>Control how your audio is processed.</CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-6">
-                        {saveStatus === "saved" && (
-                            <div className="flex items-center gap-2 text-sm text-green-600 dark:text-green-400">
-                                <CheckCircle2 className="h-4 w-4" />
-                                Settings saved
-                            </div>
-                        )}
-                        {saveStatus === "error" && (
-                            <div className="flex items-center gap-2 text-sm text-destructive">
-                                <AlertCircle className="h-4 w-4" />
-                                Failed to save settings
-                            </div>
-                        )}
                         <div className="flex items-center justify-between space-x-2">
                             <div className="space-y-1">
                                 <Label htmlFor="cleanup">AI Cleanup (GPT-4o-mini)</Label>
@@ -394,19 +365,7 @@ export function SettingsView() {
                                 ~/.oflow/transcripts.jsonl
                             </div>
                         </div>
-                        <div className="pt-2 space-y-2">
-                            {clearStatus === "cleared" && (
-                                <div className="flex items-center gap-2 text-sm text-green-600 dark:text-green-400">
-                                    <CheckCircle2 className="h-4 w-4" />
-                                    History cleared
-                                </div>
-                            )}
-                            {clearStatus === "error" && (
-                                <div className="flex items-center gap-2 text-sm text-destructive">
-                                    <AlertCircle className="h-4 w-4" />
-                                    Failed to clear history
-                                </div>
-                            )}
+                        <div className="pt-2">
                             <Button
                                 variant="outline"
                                 className="text-destructive hover:text-destructive"

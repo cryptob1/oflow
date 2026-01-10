@@ -439,7 +439,8 @@ class WhisperAPI:
             raise APIError(f"Whisper API request failed: {e}") from e
 
         if response.status_code != 200:
-            error_text = response.text[:200]  # Limit error message length
+            error_text = response.text[:500]  # Show more error details
+            logger.error(f"Whisper API error: status={response.status_code}, response={error_text}")
             raise APIError(
                 f"Whisper API error ({response.status_code}): {error_text}"
             )
@@ -739,7 +740,9 @@ async def process_audio_with_graph(audio: np.ndarray) -> AsyncIterator[VoiceEven
             yield VoiceEvent(type=EventType.STT_ERROR, error="OpenAI API key not set. Configure it in Settings.")
             return
 
-    logger.debug(f"Settings: provider={provider}, cleanup={enable_cleanup}, memory={enable_memory}")
+    # Log settings (mask API key for security)
+    masked_key = api_key[:8] + "..." + api_key[-4:] if api_key and len(api_key) > 12 else "NOT SET"
+    logger.info(f"Settings: provider={provider}, cleanup={enable_cleanup}, memory={enable_memory}, api_key={masked_key}")
 
     # Load existing memories
     storage = StorageManager()
@@ -972,14 +975,14 @@ class VoiceDictationServer:
         logger.info("Recording started")
 
     def _play_beep(self):
-        """Play a short beep to indicate recording started."""
+        """Play a subtle beep to indicate recording started."""
         try:
-            duration = 0.1  # 100ms
-            freq = 800  # Hz
+            duration = 0.05  # 50ms - shorter
+            freq = 600  # Hz - lower pitch
             t = np.linspace(0, duration, int(SAMPLE_RATE * duration), False)
             # Gentle beep with fade in/out
             envelope = np.sin(np.pi * t / duration)  # Smooth envelope
-            beep = np.sin(2 * np.pi * freq * t) * envelope * 0.4
+            beep = np.sin(2 * np.pi * freq * t) * envelope * 0.15  # Quieter
             sd.play(beep.astype(np.float32), SAMPLE_RATE, blocking=True)
         except Exception as e:
             logger.debug(f"Beep failed: {e}")

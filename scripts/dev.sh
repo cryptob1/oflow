@@ -23,12 +23,16 @@ fi
 
 # Clean up any existing processes
 pkill -f "python.*oflow.py" 2>/dev/null || true
-rm -f /tmp/oflow.pid /tmp/voice-dictation.sock 2>/dev/null || true
+rm -f /tmp/oflow.pid /tmp/voice-dictation.sock /tmp/oflow-backend.log 2>/dev/null || true
 
-# Start backend
+# Start backend with logs to file
 echo "Starting backend..."
-.venv/bin/python oflow.py &
+.venv/bin/python oflow.py > /tmp/oflow-backend.log 2>&1 &
 BACKEND_PID=$!
+
+# Tail logs in background
+tail -f /tmp/oflow-backend.log 2>/dev/null | sed 's/^/[backend] /' &
+TAIL_PID=$!
 
 # Wait for socket to be ready (up to 10 seconds)
 echo "Waiting for backend to be ready..."
@@ -49,8 +53,9 @@ cleanup() {
     echo ""
     echo "Shutting down..."
     kill $BACKEND_PID 2>/dev/null || true
+    kill $TAIL_PID 2>/dev/null || true
     pkill -f "python.*oflow.py" 2>/dev/null || true
-    rm -f /tmp/oflow.pid /tmp/voice-dictation.sock 2>/dev/null || true
+    rm -f /tmp/oflow.pid /tmp/voice-dictation.sock /tmp/oflow-backend.log 2>/dev/null || true
     exit 0
 }
 
