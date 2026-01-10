@@ -106,6 +106,25 @@ DEFAULT_ENABLE_MEMORY = os.getenv("ENABLE_MEMORY", "false").lower() == "true"
 DEFAULT_PROVIDER = os.getenv("PROVIDER", "groq")  # Default to Groq (faster)
 
 
+def ensure_data_dir() -> None:
+    """Ensure ~/.oflow directory and default files exist."""
+    SETTINGS_FILE.parent.mkdir(parents=True, exist_ok=True)
+
+    # Create default settings file if it doesn't exist
+    if not SETTINGS_FILE.exists():
+        default_settings = {
+            'enableCleanup': DEFAULT_ENABLE_CLEANUP,
+            'enableMemory': DEFAULT_ENABLE_MEMORY,
+            'provider': DEFAULT_PROVIDER,
+        }
+        with open(SETTINGS_FILE, 'w') as f:
+            json.dump(default_settings, f, indent=2)
+
+    # Create empty transcripts file if it doesn't exist
+    if not TRANSCRIPTS_FILE.exists():
+        TRANSCRIPTS_FILE.touch()
+
+
 def load_settings() -> dict:
     """
     Load settings from ~/.oflow/settings.json.
@@ -114,6 +133,8 @@ def load_settings() -> dict:
     Returns:
         dict with settings including provider, API keys, and feature flags
     """
+    ensure_data_dir()
+
     try:
         if SETTINGS_FILE.exists():
             with open(SETTINGS_FILE) as f:

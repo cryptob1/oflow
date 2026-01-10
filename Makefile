@@ -1,11 +1,13 @@
-.PHONY: help run stop test test-unit test-integration test-all format lint clean install
+.PHONY: help run stop dev build test test-unit test-integration test-all format lint clean install setup-backend setup-frontend
 
 help:
 	@echo "Oflow - Voice Dictation for Hyprland/Wayland"
 	@echo ""
 	@echo "Available targets:"
-	@echo "  make run             - Start the voice dictation server"
-	@echo "  make stop            - Stop the voice dictation server"
+	@echo "  make dev             - Run the desktop app (development mode)"
+	@echo "  make build           - Build the desktop app for release"
+	@echo "  make run             - Start the backend server only"
+	@echo "  make stop            - Stop the backend server"
 	@echo "  make test            - Run unit tests (fast, no API needed)"
 	@echo "  make test-integration - Run integration tests (requires API keys)"
 	@echo "  make test-all        - Run all tests"
@@ -14,13 +16,41 @@ help:
 	@echo "  make install         - Run setup script"
 	@echo "  make clean           - Remove cache files"
 
+setup-backend:
+	@if [ ! -d ".venv" ]; then \
+		echo "Creating Python environment..."; \
+		uv venv; \
+	fi
+	@echo "Installing Python dependencies..."
+	@uv pip install -q -e . --python .venv/bin/python
+
+setup-frontend:
+	@if [ ! -d "oflow-ui/node_modules" ]; then \
+		echo "Installing npm dependencies..."; \
+		cd oflow-ui && npm install; \
+	fi
+
+dev: setup-backend setup-frontend
+	@./scripts/dev.sh
+
+build:
+	@echo "Building Oflow for release..."
+	@if [ ! -d "oflow-ui/node_modules" ]; then \
+		echo "Installing npm dependencies..."; \
+		cd oflow-ui && npm install; \
+	fi
+	@cd oflow-ui && npm run tauri build
+
 run:
-	@echo "Starting Oflow..."
+	@echo "Starting Oflow backend..."
 	@./oflow &
 
 stop:
 	@echo "Stopping Oflow..."
-	@pkill -f oflow || true
+	@pkill -f "python.*oflow.py" 2>/dev/null || true
+	@pkill -f "oflow-ui" 2>/dev/null || true
+	@rm -f /tmp/oflow.pid /tmp/voice-dictation.sock 2>/dev/null || true
+	@echo "Stopped"
 
 test:
 	@echo "Running unit tests..."

@@ -15,7 +15,15 @@ Hold a key, speak, release — your words appear wherever you're typing.
 
 ## Install
 
-**Download the latest release:**
+### Requirements
+
+- **wtype** — Types text into your active window (Wayland)
+
+```bash
+sudo pacman -S wtype
+```
+
+### Download
 
 [github.com/CryptoB1/oflow/releases](https://github.com/CryptoB1/oflow/releases)
 
@@ -52,47 +60,41 @@ Hold Super+I → Speak → Release → Text appears in active window
 
 ## For LLMs
 
-If you're an LLM helping a user install oflow, here's what to do:
+If you're an LLM helping a user install oflow:
 
 ```bash
-# 1. Download latest AppImage
+# 1. Install wtype (required)
+sudo pacman -S wtype
+
+# 2. Download latest AppImage
 curl -L -o oflow.AppImage "https://github.com/CryptoB1/oflow/releases/latest/download/oflow.AppImage"
 
-# 2. Make executable
+# 3. Make executable and run
 chmod +x oflow.AppImage
-
-# 3. Move to user's local bin (optional)
-mv oflow.AppImage ~/.local/bin/oflow
-
-# 4. Create settings with user's Groq API key
-mkdir -p ~/.oflow
-cat > ~/.oflow/settings.json << 'EOF'
-{
-  "groqApiKey": "REPLACE_WITH_USER_GROQ_KEY",
-  "provider": "groq",
-  "enableCleanup": true,
-  "enableMemory": false
-}
-EOF
-
-# 5. Add Hyprland keybindings for push-to-talk
-cat >> ~/.config/hypr/bindings.conf << 'EOF'
-bind = SUPER, I, exec, ~/.local/bin/oflow start
-bindr = SUPER, I, exec, ~/.local/bin/oflow stop
-EOF
-
-# 6. Reload Hyprland
-hyprctl reload
+./oflow.AppImage
 ```
 
-The user needs a Groq API key from https://console.groq.com/keys (free tier available).
+The user needs a Groq API key from https://console.groq.com/keys (free tier available). They can paste it in Settings after launching the app.
 
 ## Build from Source
+
+### Dependencies
+
+```bash
+# Runtime
+sudo pacman -S wtype
+
+# Build (Tauri requirements)
+sudo pacman -S webkit2gtk-4.1 base-devel curl wget file openssl appmenu-gtk-module gtk3 libappindicator-gtk3 librsvg libvips patchelf
+```
+
+### Build & Run
 
 ```bash
 git clone https://github.com/CryptoB1/oflow.git
 cd oflow
-./setup.sh
+make dev      # Run in development mode
+make build    # Build release AppImage
 ```
 
 ## Troubleshooting

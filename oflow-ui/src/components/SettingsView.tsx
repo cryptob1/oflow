@@ -4,8 +4,15 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { loadSettings, saveSettings, clearHistory, type Settings } from "@/lib/api";
-import { CheckCircle2, AlertCircle, Eye, EyeOff, Shield, Keyboard, Zap } from "lucide-react";
+import { loadSettings, saveSettings, clearHistory, getShortcut, setShortcut, SHORTCUT_PRESETS, type Settings } from "@/lib/api";
+import { CheckCircle2, AlertCircle, Eye, EyeOff, Shield, Keyboard, Zap, Loader2 } from "lucide-react";
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select";
 
 export function SettingsView() {
     const [settings, setSettings] = useState<Settings>({
@@ -20,6 +27,8 @@ export function SettingsView() {
     const [showGroqKey, setShowGroqKey] = useState(false);
     const [apiKeyInput, setApiKeyInput] = useState("");
     const [groqKeyInput, setGroqKeyInput] = useState("");
+    const [currentShortcut, setCurrentShortcut] = useState("Super+I");
+    const [shortcutStatus, setShortcutStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
 
     useEffect(() => {
         const load = async () => {
@@ -33,6 +42,9 @@ export function SettingsView() {
                 if (loadedSettings.groqApiKey) {
                     setGroqKeyInput(loadedSettings.groqApiKey);
                 }
+                // Load current shortcut
+                const shortcut = await getShortcut();
+                setCurrentShortcut(shortcut);
             } catch (error) {
                 console.error("Failed to load settings:", error);
             } finally {
@@ -120,6 +132,23 @@ export function SettingsView() {
             console.error("Failed to save provider:", error);
             setSaveStatus("error");
             setTimeout(() => setSaveStatus("idle"), 3000);
+        }
+    };
+
+    const handleShortcutChange = async (shortcut: string) => {
+        setShortcutStatus("saving");
+        try {
+            await setShortcut(shortcut);
+            setCurrentShortcut(shortcut);
+            // Also save to settings file for persistence
+            const newSettings = { ...settings, shortcut };
+            await saveSettings(newSettings);
+            setShortcutStatus("saved");
+            setTimeout(() => setShortcutStatus("idle"), 2000);
+        } catch (error) {
+            console.error("Failed to set shortcut:", error);
+            setShortcutStatus("error");
+            setTimeout(() => setShortcutStatus("idle"), 3000);
         }
     };
 
@@ -255,16 +284,47 @@ export function SettingsView() {
                         <CardDescription>Push-to-talk hotkey for voice recording.</CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-4">
-                        <div className="p-3 bg-muted rounded-lg">
-                            <p className="text-sm font-medium mb-2">Current Shortcut: <code className="px-2 py-1 bg-background rounded">Super + I</code></p>
-                            <p className="text-xs text-muted-foreground">
-                                Hold to record, release to stop. On Hyprland/Wayland, this is configured via your window manager bindings.
-                            </p>
+                        {shortcutStatus === "saved" && (
+                            <div className="flex items-center gap-2 text-sm text-green-600 dark:text-green-400">
+                                <CheckCircle2 className="h-4 w-4" />
+                                Shortcut updated
+                            </div>
+                        )}
+                        {shortcutStatus === "error" && (
+                            <div className="flex items-center gap-2 text-sm text-destructive">
+                                <AlertCircle className="h-4 w-4" />
+                                Failed to update shortcut
+                            </div>
+                        )}
+                        <div className="space-y-2">
+                            <Label>Global Hotkey</Label>
+                            <Select
+                                value={currentShortcut}
+                                onValueChange={handleShortcutChange}
+                                disabled={isLoading || shortcutStatus === "saving"}
+                            >
+                                <SelectTrigger className="w-full">
+                                    {shortcutStatus === "saving" ? (
+                                        <div className="flex items-center gap-2">
+                                            <Loader2 className="h-4 w-4 animate-spin" />
+                                            Updating...
+                                        </div>
+                                    ) : (
+                                        <SelectValue placeholder="Select a shortcut" />
+                                    )}
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {SHORTCUT_PRESETS.map((preset) => (
+                                        <SelectItem key={preset.value} value={preset.value}>
+                                            {preset.label}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
                         </div>
-                        <div className="text-xs text-muted-foreground">
-                            <p className="font-medium mb-1">To change the shortcut:</p>
-                            <p>Edit <code className="px-1 bg-muted rounded">~/.config/hypr/bindings.conf</code></p>
-                        </div>
+                        <p className="text-xs text-muted-foreground">
+                            Hold the key to record, release to stop and transcribe.
+                        </p>
                     </CardContent>
                 </Card>
 

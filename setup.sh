@@ -32,6 +32,7 @@ echo -e "${NC}"
 print_status "Checking system dependencies..."
 
 MISSING_DEPS=()
+REQUIRED_DEPS=()  # These must be installed for the app to work
 
 check_cmd() {
     if ! command -v "$1" &>/dev/null; then
@@ -41,24 +42,57 @@ check_cmd() {
     return 0
 }
 
+check_required() {
+    if ! command -v "$1" &>/dev/null; then
+        REQUIRED_DEPS+=("$2")
+        MISSING_DEPS+=("$2")
+        return 1
+    fi
+    return 0
+}
+
 check_cmd python3 python && print_success "Python found: $(python3 --version)" || true
-check_cmd wtype wtype || true
+check_required wtype wtype || true  # Required for typing text into windows
 check_cmd notify-send libnotify || true
 check_cmd pactl "pulseaudio-utils or pipewire-pulse" || true
 
 if [[ ${#MISSING_DEPS[@]} -gt 0 ]]; then
-    print_warning "Missing system packages: ${MISSING_DEPS[*]}"
+    if [[ ${#REQUIRED_DEPS[@]} -gt 0 ]]; then
+        print_error "Missing required packages: ${REQUIRED_DEPS[*]}"
+        echo ""
+        echo "These packages are required for oflow to work:"
+        echo -e "  ${YELLOW}wtype${NC} - Types transcribed text into your active window"
+        echo ""
+    fi
+    if [[ ${#MISSING_DEPS[@]} -gt ${#REQUIRED_DEPS[@]} ]]; then
+        print_warning "Missing optional packages: $(echo "${MISSING_DEPS[*]}" | tr ' ' '\n' | grep -v "$(echo "${REQUIRED_DEPS[*]}" | tr ' ' '\n')" | tr '\n' ' ')"
+    fi
     echo ""
-    echo "Install them with:"
+    echo "Install with:"
     echo -e "  ${YELLOW}sudo pacman -S ${MISSING_DEPS[*]}${NC}"
     echo ""
-    read -p "Try to install now? (requires sudo) [y/N] " -n 1 -r
-    echo
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
-        sudo pacman -S --noconfirm "${MISSING_DEPS[@]}"
-        print_success "System dependencies installed"
+
+    if [[ ${#REQUIRED_DEPS[@]} -gt 0 ]]; then
+        # Required deps - strongly encourage installation
+        read -p "Install required packages now? (requires sudo) [Y/n] " -n 1 -r
+        echo
+        if [[ ! $REPLY =~ ^[Nn]$ ]]; then
+            sudo pacman -S --noconfirm "${MISSING_DEPS[@]}"
+            print_success "System dependencies installed"
+        else
+            print_error "Cannot continue without required packages. Please install them and run setup again."
+            exit 1
+        fi
     else
-        print_warning "Skipping system dependencies (some features may not work)"
+        # Only optional deps missing
+        read -p "Install optional packages? (requires sudo) [y/N] " -n 1 -r
+        echo
+        if [[ $REPLY =~ ^[Yy]$ ]]; then
+            sudo pacman -S --noconfirm "${MISSING_DEPS[@]}"
+            print_success "System dependencies installed"
+        else
+            print_warning "Skipping optional packages"
+        fi
     fi
 else
     print_success "All system dependencies present"
@@ -102,7 +136,7 @@ fi
 source .venv/bin/activate
 
 print_status "Installing Python dependencies..."
-uv pip install -q sounddevice numpy httpx python-dotenv faster-whisper
+uv pip install -q -e .
 print_success "Dependencies installed"
 
 # -----------------------------------------------------------------------------

@@ -10,17 +10,26 @@
     {
       "identifier": "fs:allow-read-text-file",
       "allow": [
-        {
-          "path": "$HOME/.oflow/**"
-        }
+        { "path": "$HOME/.oflow/*" }
       ]
     },
     {
-      "identifier": "fs:allow-write-file",
+      "identifier": "fs:allow-write-text-file",
       "allow": [
-        {
-          "path": "$HOME/.oflow/**"
-        }
+        { "path": "$HOME/.oflow/*" }
+      ]
+    },
+    {
+      "identifier": "fs:allow-exists",
+      "allow": [
+        { "path": "$HOME/.oflow" },
+        { "path": "$HOME/.oflow/*" }
+      ]
+    },
+    {
+      "identifier": "fs:allow-mkdir",
+      "allow": [
+        { "path": "$HOME/.oflow" }
       ]
     },
     "shell:allow-execute",

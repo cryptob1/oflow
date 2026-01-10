@@ -83,3 +83,8 @@ Environment variables in `.env`:
 - Min duration: 0.3s
 - Min amplitude: 0.01 (speech detection threshold)
 - Normalization target: 0.95
+
+## Release TODO
+
+- [ ] Publish AUR package for easy installation on Arch Linux
+- [ ] Add systemd user service for auto-start

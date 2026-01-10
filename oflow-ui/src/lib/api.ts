@@ -1,4 +1,4 @@
-import { readTextFile, writeTextFile, BaseDirectory } from '@tauri-apps/plugin-fs';
+import { readTextFile, writeTextFile, mkdir, exists, BaseDirectory } from '@tauri-apps/plugin-fs';
 import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 
@@ -222,10 +222,22 @@ export async function loadSettings(): Promise<Settings> {
  */
 export async function saveSettings(settings: Settings): Promise<void> {
     try {
+        console.log('[saveSettings] Checking if .oflow exists...');
+        const dirExists = await exists('.oflow', { baseDir: BaseDirectory.Home });
+        console.log('[saveSettings] Directory exists:', dirExists);
+
+        if (!dirExists) {
+            console.log('[saveSettings] Creating .oflow directory...');
+            await mkdir('.oflow', { baseDir: BaseDirectory.Home });
+        }
+
+        console.log('[saveSettings] Writing settings.json...');
         await writeTextFile('.oflow/settings.json', JSON.stringify(settings, null, 2), {
             baseDir: BaseDirectory.Home
         });
+        console.log('[saveSettings] Success!');
     } catch (error) {
+        console.error('[saveSettings] Error:', error);
         throw new Error(`Failed to save settings: ${error}`);
     }
 }
@@ -235,6 +247,11 @@ export async function saveSettings(settings: Settings): Promise<void> {
  */
 export async function clearHistory(): Promise<void> {
     try {
+        // Ensure .oflow directory exists
+        const dirExists = await exists('.oflow', { baseDir: BaseDirectory.Home });
+        if (!dirExists) {
+            await mkdir('.oflow', { baseDir: BaseDirectory.Home });
+        }
         await writeTextFile('.oflow/transcripts.jsonl', '', {
             baseDir: BaseDirectory.Home
         });
