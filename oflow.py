@@ -1085,9 +1085,24 @@ class ChunkedTranscriber:
 
         return result
 
+    # Common Whisper hallucinations to filter out
+    HALLUCINATION_PATTERNS = [
+        "thank you", "thanks for watching", "subscribe", "like and subscribe",
+        "see you next time", "bye", "goodbye", "thanks for listening",
+        "please subscribe", "don't forget to", "hit the bell", "leave a comment",
+        "check out", "follow me", "peace", "take care", "have a great",
+        "i'll see you", "catch you", "until next time", "stay tuned",
+    ]
+
     async def _transcribe_with_client(self, client: httpx.AsyncClient, audio: np.ndarray) -> str:
         """Transcribe audio with provided client."""
         if len(audio) == 0:
+            return ""
+
+        # Check if audio has enough amplitude (skip silent chunks)
+        max_amplitude = np.max(np.abs(audio))
+        if max_amplitude < MIN_AUDIO_AMPLITUDE:
+            logger.debug("Skipping silent audio chunk")
             return ""
 
         normalized = AudioProcessor.normalize(audio)
@@ -1106,16 +1121,43 @@ class ChunkedTranscriber:
                 self.whisper_url,
                 headers={"Authorization": f"Bearer {self.api_key}"},
                 files={"file": ("audio.wav", buffer.read(), "audio/wav")},
-                data={"model": self.whisper_model, "response_format": "json", "language": "en"},
+                data={
+                    "model": self.whisper_model,
+                    "response_format": "json",
+                    "language": "en",
+                    "prompt": "",  # Empty prompt - just transcribe
+                },
             )
             if response.status_code == 200:
-                return response.json().get("text", "").strip()
+                text = response.json().get("text", "").strip()
+                # Filter out common hallucinations
+                if self._is_hallucination(text):
+                    logger.debug(f"Filtered hallucination: {text}")
+                    return ""
+                return text
         except Exception as e:
             logger.error(f"Final transcription error: {e}")
         return ""
 
+    def _is_hallucination(self, text: str) -> bool:
+        """Check if text is likely a Whisper hallucination."""
+        if not text:
+            return False
+        text_lower = text.lower().strip()
+        # Check for common hallucination patterns
+        for pattern in self.HALLUCINATION_PATTERNS:
+            if pattern in text_lower:
+                return True
+        # Very short text that's just punctuation
+        if len(text) < 3 or text in [".", "..", "...", "!", "?", ","]:
+            return True
+        return False
+
     async def _cleanup_with_client(self, client: httpx.AsyncClient, text: str) -> str:
         """Cleanup text with provided client."""
+        if not text or len(text) < 3:
+            return text
+
         try:
             response = await client.post(
                 self.llm_url,
@@ -1123,15 +1165,23 @@ class ChunkedTranscriber:
                 json={
                     "model": self.llm_model,
                     "messages": [
-                        {"role": "system", "content": "Fix grammar/punctuation. Output only the cleaned text, nothing else."},
+                        {
+                            "role": "system",
+                            "content": "You are a transcription editor. Fix ONLY grammar and punctuation errors. Do NOT add, remove, or change any words. Do NOT add greetings, sign-offs, or any other content. Output ONLY the corrected text, nothing else."
+                        },
                         {"role": "user", "content": text}
                     ],
-                    "temperature": 0.3,
-                    "max_tokens": 500,
+                    "temperature": 0.1,  # Lower temperature for more deterministic output
+                    "max_tokens": len(text) + 50,  # Limit to roughly input length
                 },
             )
             if response.status_code == 200:
-                return response.json()["choices"][0]["message"]["content"].strip()
+                cleaned = response.json()["choices"][0]["message"]["content"].strip()
+                # If cleanup is way longer than input, it's probably adding content
+                if len(cleaned) > len(text) * 1.5:
+                    logger.debug("Cleanup added too much content, using original")
+                    return text
+                return cleaned
         except Exception as e:
             logger.error(f"Final cleanup error: {e}")
         return text
