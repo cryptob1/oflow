@@ -5,9 +5,15 @@ mod socket_client;
 use socket_client::{is_backend_running, send_command};
 use std::sync::Arc;
 use tauri::{AppHandle, Manager, State, Window};
-use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
-use tauri_plugin_shell::ShellExt;
 use tokio::sync::Mutex;
+
+// Only import shortcut plugin for release builds
+#[cfg(not(debug_assertions))]
+use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
+
+// Only import shell for release builds (sidecar)
+#[cfg(not(debug_assertions))]
+use tauri_plugin_shell::ShellExt;
 
 /// Default shortcut key
 const DEFAULT_SHORTCUT: &str = "Super+I";
@@ -346,50 +352,14 @@ pub fn run() {
         current_shortcut: initial_shortcut.clone(),
     }));
 
-    // Clone for the shortcut handler
+    // Clone for the shortcut handler (release mode only)
+    #[cfg(not(debug_assertions))]
     let handler_state = app_state.clone();
 
+    #[cfg(not(debug_assertions))]
+    let shortcut_initial = initial_shortcut.clone();
+
     tauri::Builder::default()
-        .plugin(
-            tauri_plugin_global_shortcut::Builder::new()
-                .with_handler(move |_app, shortcut, event| {
-                    log::info!("Shortcut event: {:?} - {:?}", shortcut, event.state());
-                    let state = handler_state.clone();
-                    match event.state() {
-                        ShortcutState::Pressed => {
-                            // Start recording on key press
-                            tauri::async_runtime::spawn(async move {
-                                let mut app_state = state.lock().await;
-                                if !app_state.is_recording {
-                                    log::info!("Sending 'start' command to backend...");
-                                    if let Err(e) = send_command("start").await {
-                                        log::error!("Failed to start recording: {}", e);
-                                    } else {
-                                        app_state.is_recording = true;
-                                        log::info!("Recording started (shortcut pressed)");
-                                    }
-                                }
-                            });
-                        }
-                        ShortcutState::Released => {
-                            // Stop recording on key release
-                            tauri::async_runtime::spawn(async move {
-                                let mut app_state = state.lock().await;
-                                if app_state.is_recording {
-                                    log::info!("Sending 'stop' command to backend...");
-                                    if let Err(e) = send_command("stop").await {
-                                        log::error!("Failed to stop recording: {}", e);
-                                    } else {
-                                        app_state.is_recording = false;
-                                        log::info!("Recording stopped (shortcut released)");
-                                    }
-                                }
-                            });
-                        }
-                    }
-                })
-                .build(),
-        )
         .setup(move |app| {
             // Initialize plugins
             if cfg!(debug_assertions) {
@@ -405,16 +375,64 @@ pub fn run() {
             // Initialize app state (share with handler)
             app.manage(app_state.clone());
 
-            // Register the initial shortcut
-            if let Ok(shortcut) = initial_shortcut.parse::<Shortcut>() {
-                if let Err(e) = app.global_shortcut().register(shortcut) {
-                    log::error!("Failed to register initial shortcut '{}': {}", initial_shortcut, e);
+            // Setup global shortcut plugin with handler (only in release mode)
+            // In dev mode, Hyprland handles shortcuts via scripts/dev.sh
+            #[cfg(not(debug_assertions))]
+            {
+                let state = handler_state.clone();
+                app.handle().plugin(
+                    tauri_plugin_global_shortcut::Builder::new()
+                        .with_handler(move |_app, shortcut, event| {
+                            log::info!("Shortcut event: {:?} - {:?}", shortcut, event.state());
+                            let state = state.clone();
+                            match event.state() {
+                                ShortcutState::Pressed => {
+                                    tauri::async_runtime::spawn(async move {
+                                        let mut app_state = state.lock().await;
+                                        if !app_state.is_recording {
+                                            log::info!("Sending 'start' command to backend...");
+                                            if let Err(e) = send_command("start").await {
+                                                log::error!("Failed to start recording: {}", e);
+                                            } else {
+                                                app_state.is_recording = true;
+                                                log::info!("Recording started (shortcut pressed)");
+                                            }
+                                        }
+                                    });
+                                }
+                                ShortcutState::Released => {
+                                    tauri::async_runtime::spawn(async move {
+                                        let mut app_state = state.lock().await;
+                                        if app_state.is_recording {
+                                            log::info!("Sending 'stop' command to backend...");
+                                            if let Err(e) = send_command("stop").await {
+                                                log::error!("Failed to stop recording: {}", e);
+                                            } else {
+                                                app_state.is_recording = false;
+                                                log::info!("Recording stopped (shortcut released)");
+                                            }
+                                        }
+                                    });
+                                }
+                            }
+                        })
+                        .build(),
+                )?;
+
+                // Register the initial shortcut
+                if let Ok(shortcut) = shortcut_initial.parse::<Shortcut>() {
+                    if let Err(e) = app.global_shortcut().register(shortcut) {
+                        log::error!("Failed to register initial shortcut '{}': {}", shortcut_initial, e);
+                    } else {
+                        log::info!("Registered global shortcut: {}", shortcut_initial);
+                    }
                 } else {
-                    log::info!("Registered global shortcut: {}", initial_shortcut);
+                    log::error!("Invalid shortcut format: {}", shortcut_initial);
                 }
-            } else {
-                log::error!("Invalid shortcut format: {}", initial_shortcut);
             }
+
+            #[cfg(debug_assertions)]
+            log::info!("Dev mode: shortcuts handled by Hyprland bindings");
 
             // Setup system tray (non-fatal if it fails)
             if let Err(e) = setup_tray(app.handle()) {
