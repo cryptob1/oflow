@@ -53,7 +53,6 @@ check_required() {
 
 check_cmd python3 python && print_success "Python found: $(python3 --version)" || true
 check_required wtype wtype || true  # Required for typing text into windows
-check_cmd notify-send libnotify || true
 check_cmd pactl "pulseaudio-utils or pipewire-pulse" || true
 
 if [[ ${#MISSING_DEPS[@]} -gt 0 ]]; then
@@ -219,6 +218,68 @@ if [[ -f "$BINDINGS_FILE" ]]; then
 else
     print_warning "Hyprland config not found at $BINDINGS_FILE"
     echo "Add the keybindings manually to your Hyprland config"
+fi
+
+# -----------------------------------------------------------------------------
+# Waybar integration
+# -----------------------------------------------------------------------------
+echo ""
+print_status "Waybar integration setup..."
+
+WAYBAR_CONFIG="$HOME/.config/waybar/config.jsonc"
+WAYBAR_STYLE="$HOME/.config/waybar/style.css"
+
+# Check for alternative config locations
+if [[ ! -f "$WAYBAR_CONFIG" ]]; then
+    if [[ -f "$HOME/.config/waybar/config" ]]; then
+        WAYBAR_CONFIG="$HOME/.config/waybar/config"
+    fi
+fi
+
+if [[ -f "$WAYBAR_CONFIG" ]]; then
+    if grep -q "custom/oflow" "$WAYBAR_CONFIG" 2>/dev/null; then
+        print_success "Waybar oflow module already configured"
+    else
+        echo ""
+        echo "Add oflow status icon to Waybar?"
+        echo "This will add a mic icon that shows recording state."
+        echo ""
+        read -p "Install Waybar module? [y/N] " -n 1 -r
+        echo
+        if [[ $REPLY =~ ^[Yy]$ ]]; then
+            # Add module definition before the last closing brace
+            # First, add to modules-right if it exists
+            if grep -q '"modules-right"' "$WAYBAR_CONFIG"; then
+                # Add custom/oflow to modules-right array
+                sed -i 's/"modules-right"[[:space:]]*:[[:space:]]*\[/"modules-right": ["custom\/oflow", /' "$WAYBAR_CONFIG"
+                print_success "Added oflow to modules-right"
+            else
+                print_warning "modules-right not found - add \"custom/oflow\" manually"
+            fi
+
+            # Append module config (user needs to place it correctly if using jsonc)
+            echo ""
+            echo -e "${YELLOW}Add this to your Waybar config:${NC}"
+            echo ""
+            cat "$SCRIPT_DIR/waybar-oflow.jsonc"
+            echo ""
+
+            # Add CSS
+            if [[ -f "$WAYBAR_STYLE" ]]; then
+                if ! grep -q "#custom-oflow" "$WAYBAR_STYLE" 2>/dev/null; then
+                    echo "" >> "$WAYBAR_STYLE"
+                    echo "/* oflow voice dictation */" >> "$WAYBAR_STYLE"
+                    cat "$SCRIPT_DIR/waybar-oflow.css" >> "$WAYBAR_STYLE"
+                    print_success "Added oflow styles to $WAYBAR_STYLE"
+                fi
+            fi
+
+            print_warning "Run 'killall waybar && waybar &' to reload"
+        fi
+    fi
+else
+    print_warning "Waybar config not found - skipping"
+    echo "To add manually, see: waybar-oflow.jsonc and waybar-oflow.css"
 fi
 
 # -----------------------------------------------------------------------------

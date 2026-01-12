@@ -10,6 +10,9 @@ Hold a key, speak, release — your words appear wherever you're typing.
 
 - **Instant transcription** — Groq Whisper runs at 200x realtime (~0.5s latency)
 - **Smart cleanup** — Auto-fixes grammar, removes filler words, formats text
+- **Waybar integration** — Status icon shows recording/transcribing state
+- **Audio feedback** — Configurable sounds for start/stop/error
+- **Spoken punctuation** — Say "period" or "new line" to insert symbols
 - **Privacy-first** — All data stored locally, no cloud backend
 - **Open source** — Built with [LangGraph](https://github.com/langchain-ai/langgraph) + Tauri
 
@@ -95,6 +98,32 @@ git clone https://github.com/CryptoB1/oflow.git
 cd oflow
 make dev      # Run in development mode
 make build    # Build release AppImage
+```
+
+## Waybar Integration
+
+oflow displays a status icon in Waybar:
+- `○` idle (green)
+- `●` recording (red)
+- `◐` transcribing (yellow)
+
+Install with:
+```bash
+python oflow.py setup waybar
+```
+
+Or run `./setup.sh` which prompts for Waybar setup.
+
+## Configuration
+
+Settings in `~/.oflow/settings.json`:
+
+```json
+{
+  "audioFeedbackTheme": "default",   // default, subtle, mechanical, silent
+  "enableSpokenPunctuation": false,  // say "period" → "."
+  "wordReplacements": {}             // custom word corrections
+}
 ```
 
 ## Troubleshooting

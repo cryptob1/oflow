@@ -51,6 +51,9 @@ All core logic is in `oflow.py`:
 - `StorageManager` - JSONL transcript storage and memory persistence
 - `MemoryBuilder` - learns user patterns from transcript history (optional, controlled by ENABLE_MEMORY)
 - `VoiceDictationServer` - Unix socket server receiving start/stop/toggle commands
+- `WaybarState` - writes state to `$XDG_RUNTIME_DIR/oflow/state` for Waybar integration
+- `AudioFeedback` - generates audio cues for recording start/stop/error (configurable themes)
+- `TextProcessor` - spoken punctuation and word replacements (applied before LLM cleanup)
 
 ### LangGraph nodes
 The pipeline is defined in `create_transcription_graph()`:
@@ -67,6 +70,7 @@ The pipeline is defined in `create_transcription_graph()`:
 - Transcripts: `~/.oflow/transcripts.jsonl`
 - Memories: `~/.oflow/memories.json`
 - Settings: `~/.oflow/settings.json`
+- Waybar state: `$XDG_RUNTIME_DIR/oflow/state` (JSON for Waybar custom module)
 
 ## Configuration
 
@@ -75,6 +79,53 @@ Environment variables in `.env`:
 - `DEBUG_MODE` - enable verbose logging
 - `ENABLE_CLEANUP` - enable GPT-4o-mini text cleanup (default: true)
 - `ENABLE_MEMORY` - enable learning from transcript history (default: false)
+
+### Settings JSON (new features)
+
+Settings in `~/.oflow/settings.json`:
+```json
+{
+  "audioFeedbackTheme": "default",   // "default", "subtle", "mechanical", "silent"
+  "audioFeedbackVolume": 0.3,        // 0.0 to 1.0
+  "iconTheme": "minimal",            // "emoji", "nerd-font", "minimal", "text"
+  "enableSpokenPunctuation": false,  // Say "period" to get "."
+  "wordReplacements": {              // Custom word corrections
+    "oflow": "oflow",
+    "hyprland": "Hyprland"
+  }
+}
+```
+
+### Waybar Integration
+
+Add to your Waybar config (`~/.config/waybar/config`):
+```jsonc
+"modules-right": ["custom/oflow", ...],
+
+"custom/oflow": {
+    "exec": "cat $XDG_RUNTIME_DIR/oflow/state 2>/dev/null || echo '{\"text\":\"○\",\"class\":\"idle\"}'",
+    "return-type": "json",
+    "interval": 1,
+    "format": "{}",
+    "tooltip": true
+}
+```
+
+Add to your Waybar CSS (`~/.config/waybar/style.css`):
+```css
+#custom-oflow.idle { color: #50fa7b; }
+#custom-oflow.recording { color: #ff5555; }
+#custom-oflow.transcribing { color: #f1fa8c; }
+```
+
+### Spoken Punctuation
+
+When `enableSpokenPunctuation` is true, say these words to insert symbols:
+- "period", "comma", "colon", "semicolon"
+- "question mark", "exclamation mark"
+- "open paren", "close paren", "open bracket", "close bracket"
+- "new line", "new paragraph"
+- "hash", "at sign", "dollar sign", "percent"
 
 ## Audio Constants
 

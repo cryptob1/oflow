@@ -81,6 +81,10 @@ TRANSCRIPTS_FILE = Path.home() / ".oflow" / "transcripts.jsonl"
 MEMORIES_FILE = Path.home() / ".oflow" / "memories.json"
 SETTINGS_FILE = Path.home() / ".oflow" / "settings.json"
 
+# Waybar state file (in XDG_RUNTIME_DIR for fast access)
+RUNTIME_DIR = Path(os.environ.get("XDG_RUNTIME_DIR", "/tmp")) / "oflow"
+STATE_FILE = RUNTIME_DIR / "state"
+
 # Memory system configuration
 MEMORY_BUILD_THRESHOLD = 1000  # Build memories every N transcripts
 MAX_MEMORIES_IN_CONTEXT = 5  # Maximum memories to include in cleanup prompt
@@ -105,6 +109,7 @@ DEBUG_MODE = os.getenv("DEBUG_MODE", "false").lower() == "true"
 DEFAULT_ENABLE_CLEANUP = os.getenv("ENABLE_CLEANUP", "true").lower() == "true"
 DEFAULT_ENABLE_MEMORY = os.getenv("ENABLE_MEMORY", "false").lower() == "true"
 DEFAULT_PROVIDER = os.getenv("PROVIDER", "groq")  # Default to Groq (faster)
+DEFAULT_TRANSCRIPTION_MODE = os.getenv("TRANSCRIPTION_MODE", "single")  # single or streaming
 
 
 def ensure_data_dir() -> None:
@@ -146,6 +151,13 @@ def load_settings() -> dict:
                     'openaiApiKey': settings.get('openaiApiKey') or OPENAI_API_KEY,
                     'groqApiKey': settings.get('groqApiKey') or GROQ_API_KEY,
                     'provider': settings.get('provider', DEFAULT_PROVIDER),
+                    'transcriptionMode': settings.get('transcriptionMode', DEFAULT_TRANSCRIPTION_MODE),
+                    # New settings for VoxType-like features
+                    'audioFeedbackTheme': settings.get('audioFeedbackTheme', 'default'),
+                    'audioFeedbackVolume': settings.get('audioFeedbackVolume', 0.3),
+                    'iconTheme': settings.get('iconTheme', 'minimal'),
+                    'enableSpokenPunctuation': settings.get('enableSpokenPunctuation', False),
+                    'wordReplacements': settings.get('wordReplacements', {}),
                 }
     except Exception as e:
         logger.warning(f"Failed to load settings from {SETTINGS_FILE}: {e}")
@@ -156,6 +168,13 @@ def load_settings() -> dict:
         'openaiApiKey': OPENAI_API_KEY,
         'groqApiKey': GROQ_API_KEY,
         'provider': DEFAULT_PROVIDER,
+        'transcriptionMode': DEFAULT_TRANSCRIPTION_MODE,
+        # Defaults for new features
+        'audioFeedbackTheme': 'default',
+        'audioFeedbackVolume': 0.3,
+        'iconTheme': 'minimal',
+        'enableSpokenPunctuation': False,
+        'wordReplacements': {},
     }
 
 
@@ -236,6 +255,286 @@ class TranscriptionError(OflowError):
 class APIError(OflowError):
     """Raised when API calls fail."""
     pass
+
+
+# ============================================================================
+# Waybar State Manager
+# ============================================================================
+
+class WaybarState:
+    """
+    Manages Waybar status bar integration.
+
+    Writes state to a file that Waybar can read via custom/oflow module.
+    State includes: idle, recording, transcribing, error
+    """
+
+    # Icon themes (like VoxType)
+    ICON_THEMES = {
+        "emoji": {"idle": "🎙️", "recording": "🎤", "transcribing": "⏳", "error": "❌"},
+        "nerd-font": {"idle": "\uf130", "recording": "\uf111", "transcribing": "\uf110", "error": "\uf131"},
+        "minimal": {"idle": "○", "recording": "●", "transcribing": "◐", "error": "×"},
+        "text": {"idle": "[MIC]", "recording": "[REC]", "transcribing": "[...]", "error": "[ERR]"},
+    }
+
+    def __init__(self, theme: str = "minimal"):
+        self.theme = theme
+        self.icons = self.ICON_THEMES.get(theme, self.ICON_THEMES["minimal"])
+        self._ensure_runtime_dir()
+
+    def _ensure_runtime_dir(self):
+        """Ensure runtime directory exists."""
+        RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
+
+    def set_state(self, state: str, tooltip: str = ""):
+        """
+        Update Waybar state file.
+
+        Args:
+            state: One of 'idle', 'recording', 'transcribing', 'error'
+            tooltip: Optional tooltip text
+        """
+        icon = self.icons.get(state, self.icons["idle"])
+
+        # Waybar JSON format
+        data = {
+            "text": icon,
+            "alt": state,
+            "tooltip": tooltip or f"oflow: {state}",
+            "class": state,
+        }
+
+        try:
+            with open(STATE_FILE, "w") as f:
+                json.dump(data, f)
+        except Exception as e:
+            logger.debug(f"Failed to write waybar state: {e}")
+
+    def idle(self):
+        self.set_state("idle", "oflow ready")
+
+    def recording(self):
+        self.set_state("recording", "Recording...")
+
+    def transcribing(self):
+        self.set_state("transcribing", "Transcribing...")
+
+    def error(self, msg: str = ""):
+        self.set_state("error", msg or "Error occurred")
+
+
+# ============================================================================
+# Audio Feedback
+# ============================================================================
+
+class AudioFeedback:
+    """
+    Generates audio feedback tones for recording events.
+
+    Supports multiple themes like VoxType:
+    - default: Pleasant two-tone beeps
+    - subtle: Quiet clicks
+    - mechanical: Typewriter-like sounds
+    - silent: No sounds
+    """
+
+    def __init__(self, theme: str = "default", volume: float = 0.3):
+        self.theme = theme
+        self.volume = max(0.0, min(1.0, volume))
+
+    def _generate_tone(self, frequency: float, duration_ms: int, fade_ms: int = 10) -> np.ndarray:
+        """Generate a sine wave tone with fade in/out."""
+        num_samples = int(SAMPLE_RATE * duration_ms / 1000)
+        fade_samples = int(SAMPLE_RATE * fade_ms / 1000)
+
+        t = np.linspace(0, duration_ms / 1000, num_samples, False)
+        tone = np.sin(2 * np.pi * frequency * t)
+
+        # Apply fade envelope
+        envelope = np.ones(num_samples)
+        if fade_samples > 0 and num_samples > fade_samples * 2:
+            fade_in = np.linspace(0, 1, fade_samples)
+            fade_out = np.linspace(1, 0, fade_samples)
+            envelope[:fade_samples] = fade_in
+            envelope[-fade_samples:] = fade_out
+
+        return (tone * envelope * self.volume).astype(np.float32)
+
+    def _generate_two_tone(self, freq1: float, freq2: float, duration_ms: int) -> np.ndarray:
+        """Generate a two-tone sound (rising or falling)."""
+        half_duration = duration_ms // 2
+        tone1 = self._generate_tone(freq1, half_duration, fade_ms=15)
+        tone2 = self._generate_tone(freq2, half_duration, fade_ms=15)
+        return np.concatenate([tone1, tone2])
+
+    def _generate_click(self, duration_ms: int = 20) -> np.ndarray:
+        """Generate a short click sound."""
+        num_samples = int(SAMPLE_RATE * duration_ms / 1000)
+        t = np.arange(num_samples)
+        # Exponential decay noise burst
+        envelope = np.exp(-5.0 * t / num_samples)
+        noise = np.where(t % 2 == 0, 1.0, -1.0)
+        return (noise * envelope * self.volume * 0.5).astype(np.float32)
+
+    def play_start(self):
+        """Play recording start sound."""
+        if self.theme == "silent":
+            return
+
+        try:
+            if self.theme == "subtle":
+                sound = self._generate_tone(1200, 40, fade_ms=8)
+            elif self.theme == "mechanical":
+                sound = self._generate_click(25)
+            else:  # default
+                sound = self._generate_two_tone(440, 880, 120)
+
+            sd.play(sound, SAMPLE_RATE, blocking=False)
+        except Exception as e:
+            logger.debug(f"Audio feedback failed: {e}")
+
+    def play_stop(self):
+        """Play recording stop sound."""
+        if self.theme == "silent":
+            return
+
+        try:
+            if self.theme == "subtle":
+                sound = self._generate_tone(800, 40, fade_ms=8)
+            elif self.theme == "mechanical":
+                sound = self._generate_click(15)
+            else:  # default
+                sound = self._generate_two_tone(880, 440, 120)
+
+            sd.play(sound, SAMPLE_RATE, blocking=False)
+        except Exception as e:
+            logger.debug(f"Audio feedback failed: {e}")
+
+    def play_error(self):
+        """Play error sound."""
+        if self.theme == "silent":
+            return
+
+        try:
+            sound = self._generate_two_tone(300, 200, 150)
+            sd.play(sound, SAMPLE_RATE, blocking=False)
+        except Exception as e:
+            logger.debug(f"Audio feedback failed: {e}")
+
+
+# ============================================================================
+# Text Processing (Spoken Punctuation & Replacements)
+# ============================================================================
+
+class TextProcessor:
+    """
+    Post-processes transcribed text with spoken punctuation and word replacements.
+
+    Applied before LLM cleanup for fast, deterministic corrections.
+    """
+
+    # Spoken punctuation map (like VoxType)
+    PUNCTUATION_MAP = [
+        # Multi-word phrases first (order matters)
+        ("question mark", "?"),
+        ("exclamation mark", "!"),
+        ("exclamation point", "!"),
+        ("open parenthesis", "("),
+        ("close parenthesis", ")"),
+        ("open paren", "("),
+        ("close paren", ")"),
+        ("open bracket", "["),
+        ("close bracket", "]"),
+        ("open brace", "{"),
+        ("close brace", "}"),
+        ("new paragraph", "\n\n"),
+        ("new line", "\n"),
+        ("forward slash", "/"),
+        ("back slash", "\\"),
+        # Single words
+        ("period", "."),
+        ("comma", ","),
+        ("colon", ":"),
+        ("semicolon", ";"),
+        ("dash", "-"),
+        ("hyphen", "-"),
+        ("underscore", "_"),
+        ("hash", "#"),
+        ("hashtag", "#"),
+        ("percent", "%"),
+        ("ampersand", "&"),
+        ("asterisk", "*"),
+        ("plus", "+"),
+        ("equals", "="),
+        ("slash", "/"),
+        ("pipe", "|"),
+        ("tilde", "~"),
+        ("backtick", "`"),
+        ("tab", "\t"),
+    ]
+
+    def __init__(self, enable_punctuation: bool = False, replacements: dict = None):
+        self.enable_punctuation = enable_punctuation
+        self.replacements = replacements or {}
+
+    def process(self, text: str) -> str:
+        """Apply all text transformations."""
+        if not text:
+            return text
+
+        result = text
+
+        # Apply spoken punctuation first
+        if self.enable_punctuation:
+            result = self._apply_punctuation(result)
+
+        # Apply custom replacements
+        if self.replacements:
+            result = self._apply_replacements(result)
+
+        return result
+
+    def _apply_punctuation(self, text: str) -> str:
+        """Convert spoken punctuation to symbols."""
+        result = text
+
+        for phrase, symbol in self.PUNCTUATION_MAP:
+            # Case-insensitive word boundary replacement
+            pattern = re.compile(r'\b' + re.escape(phrase) + r'\b', re.IGNORECASE)
+            result = pattern.sub(symbol, result)
+
+        # Clean up spacing around punctuation
+        result = self._clean_punctuation_spacing(result)
+
+        return result
+
+    def _apply_replacements(self, text: str) -> str:
+        """Apply custom word replacements."""
+        result = text
+
+        for word, replacement in self.replacements.items():
+            pattern = re.compile(r'\b' + re.escape(word) + r'\b', re.IGNORECASE)
+            result = pattern.sub(replacement, result)
+
+        return result
+
+    def _clean_punctuation_spacing(self, text: str) -> str:
+        """Clean up spacing around punctuation marks."""
+        result = text
+
+        # Remove space before punctuation
+        for punct in ['.', ',', '?', '!', ':', ';', ')', ']', '}']:
+            result = result.replace(f" {punct}", punct)
+
+        # Remove space after opening brackets
+        for punct in ['(', '[', '{']:
+            result = result.replace(f"{punct} ", punct)
+
+        # Clean newlines/tabs
+        result = result.replace(" \n", "\n").replace("\n ", "\n")
+        result = result.replace(" \t", "\t").replace("\t ", "\t")
+
+        return result
 
 
 # LangGraph State
@@ -829,24 +1128,6 @@ def validate_configuration() -> None:
     logger.info("Configuration validated successfully")
 
 
-def notify(message: str, duration_ms: int = 1500, persistent: bool = False) -> None:
-    """
-    Send desktop notification.
-
-    Args:
-        message: Notification message text
-        duration_ms: Notification duration in milliseconds (default: 1500)
-        persistent: If True, notification stays until dismissed (default: False)
-    """
-    timeout = "0" if persistent else str(duration_ms)
-    try:
-        subprocess.run(
-            ["notify-send", "-t", timeout, message],
-            stderr=subprocess.DEVNULL,
-            check=False,  # Don't fail if notify-send is not available
-        )
-    except FileNotFoundError:
-        logger.debug("notify-send not available, skipping notification")
 
 
 def type_text(text: str) -> None:
@@ -1208,6 +1489,33 @@ class VoiceDictationServer:
         # Persistent HTTP client for connection reuse
         self._http_client: httpx.AsyncClient | None = None
 
+        # Streaming mode state
+        self._transcription_mode = 'single'  # Will be set on recording start
+        self._streaming_loop: asyncio.AbstractEventLoop | None = None
+        self._streaming_thread: threading.Thread | None = None
+        self._streaming_transcripts: list[str] = []
+        self._streaming_pending_audio: list[np.ndarray] = []
+        self._streaming_tasks: list[asyncio.Task] = []
+        self._streaming_lock = threading.Lock()
+        self._chunk_seconds = 1.0  # Upload chunks every 1 second
+
+        # Load settings for audio feedback and waybar
+        settings = load_settings()
+        self.audio_feedback = AudioFeedback(
+            theme=settings.get('audioFeedbackTheme', 'default'),
+            volume=settings.get('audioFeedbackVolume', 0.3),
+        )
+        self.waybar_state = WaybarState(
+            theme=settings.get('iconTheme', 'minimal'),
+        )
+        self.text_processor = TextProcessor(
+            enable_punctuation=settings.get('enableSpokenPunctuation', False),
+            replacements=settings.get('wordReplacements', {}),
+        )
+
+        # Set initial waybar state
+        self.waybar_state.idle()
+
         subprocess.run(
             ["pactl", "set-source-volume", "@DEFAULT_SOURCE@", "150%"],
             stderr=subprocess.DEVNULL,
@@ -1264,6 +1572,22 @@ class VoiceDictationServer:
         if self.is_recording:
             self.audio_queue.put(indata.copy())
 
+            # In streaming mode, also accumulate for chunk uploads
+            if hasattr(self, '_transcription_mode') and self._transcription_mode == 'streaming':
+                with self._streaming_lock:
+                    self._streaming_pending_audio.append(indata.copy())
+
+                    # Check if we have enough for a chunk
+                    total_samples = sum(len(a) for a in self._streaming_pending_audio)
+                    if total_samples >= int(SAMPLE_RATE * self._chunk_seconds):
+                        # Combine into chunk and schedule upload
+                        chunk = np.concatenate(self._streaming_pending_audio, axis=0).flatten()
+                        chunk_index = len(self._streaming_tasks)
+                        self._streaming_pending_audio = []
+
+                        # Schedule upload (don't block callback)
+                        self._schedule_chunk_upload(chunk, chunk_index)
+
     def _signal_handler(self, signum, frame):
         logger.info(f"Received signal {signum}, shutting down...")
         self._running = False
@@ -1294,43 +1618,90 @@ class VoiceDictationServer:
     def _start_recording(self):
         self.is_recording = True
         self.audio_data = []
-        self._play_beep()
-        self._show_overlay()
-        logger.info("Recording started")
 
-    def _play_beep(self):
-        """Play a subtle beep to indicate recording started."""
-        try:
-            duration = 0.05  # 50ms - shorter
-            freq = 600  # Hz - lower pitch
-            t = np.linspace(0, duration, int(SAMPLE_RATE * duration), False)
-            # Gentle beep with fade in/out
-            envelope = np.sin(np.pi * t / duration)  # Smooth envelope
-            beep = np.sin(2 * np.pi * freq * t) * envelope * 0.15  # Quieter
-            sd.play(beep.astype(np.float32), SAMPLE_RATE, blocking=True)
-        except Exception as e:
-            logger.debug(f"Beep failed: {e}")
+        # Update waybar state and play audio feedback
+        self.waybar_state.recording()
+        self.audio_feedback.play_start()
 
-    def _show_overlay(self):
-        """Show recording notification."""
-        try:
-            subprocess.run(
-                ["notify-send", "-t", "2000", "oflow", "Recording..."],
-                stderr=subprocess.DEVNULL,
-                check=False,
+        # Reload settings in case they changed
+        settings = load_settings()
+        self._transcription_mode = settings.get('transcriptionMode', 'single')
+
+        # Update text processor with current settings
+        self.text_processor = TextProcessor(
+            enable_punctuation=settings.get('enableSpokenPunctuation', False),
+            replacements=settings.get('wordReplacements', {}),
+        )
+
+        if self._transcription_mode == 'streaming':
+            # Initialize streaming state
+            self._streaming_transcripts = []
+            self._streaming_pending_audio = []
+            self._streaming_tasks = []
+
+            # Start async event loop in background thread
+            self._streaming_loop = asyncio.new_event_loop()
+            self._streaming_thread = threading.Thread(
+                target=self._run_streaming_loop,
+                daemon=True
             )
-        except Exception:
-            pass
+            self._streaming_thread.start()
+            logger.info("Recording started (streaming mode)")
+        else:
+            logger.info("Recording started (single request mode)")
 
-    def _hide_overlay(self):
-        """Dismiss recording notification (mako auto-dismisses, this is a no-op)."""
-        pass
+    def _run_streaming_loop(self):
+        """Run the async event loop for streaming transcription."""
+        asyncio.set_event_loop(self._streaming_loop)
+        self._streaming_loop.run_forever()
+
+    def _schedule_chunk_upload(self, audio_chunk: np.ndarray, chunk_index: int):
+        """Schedule a chunk for transcription in the streaming loop."""
+        if self._streaming_loop is None:
+            return
+
+        async def transcribe_chunk():
+            settings = load_settings()
+            provider = settings.get('provider', 'groq')
+            api_key = settings.get('groqApiKey') if provider == 'groq' else settings.get('openaiApiKey')
+
+            if not api_key:
+                return ""
+
+            # Check if chunk has enough audio
+            max_amplitude = np.max(np.abs(audio_chunk))
+            if max_amplitude < MIN_AUDIO_AMPLITUDE:
+                logger.debug(f"Chunk {chunk_index}: skipping silent audio")
+                return ""
+
+            transcriber = ChunkedTranscriber(api_key, provider)
+            try:
+                async with httpx.AsyncClient(timeout=30.0) as client:
+                    text = await transcriber._transcribe_with_client(client, audio_chunk)
+                    if text and not transcriber._is_hallucination(text):
+                        with self._streaming_lock:
+                            # Store with index to maintain order
+                            self._streaming_transcripts.append((chunk_index, text))
+                        logger.debug(f"Chunk {chunk_index}: '{text[:30]}...'")
+                        return text
+            except Exception as e:
+                logger.error(f"Chunk {chunk_index} error: {e}")
+            return ""
+
+        # Schedule the coroutine
+        future = asyncio.run_coroutine_threadsafe(transcribe_chunk(), self._streaming_loop)
+        with self._streaming_lock:
+            self._streaming_tasks.append(future)
 
     def _stop_recording(self):
         self.is_recording = False
-        self._hide_overlay()
+
+        # Update waybar state and play stop sound
+        self.waybar_state.transcribing()
+        self.audio_feedback.play_stop()
 
         import time
+        start = time.perf_counter()
         time.sleep(0.1)  # Brief pause to collect final audio
 
         # Drain remaining audio from queue
@@ -1341,13 +1712,190 @@ class VoiceDictationServer:
             except queue.Empty:
                 break
 
-        if self.audio_data:
-            start = time.perf_counter()
-            asyncio.run(self._process_parallel_chunks())
-            total_ms = (time.perf_counter() - start) * 1000
-            logger.info(f"Recording stopped (processing: {total_ms:.0f}ms)")
-        else:
+        if not self.audio_data:
             logger.info("Recording stopped (no audio)")
+            self._cleanup_streaming()
+            return
+
+        # Check which mode we're in
+        mode = getattr(self, '_transcription_mode', 'single')
+
+        if mode == 'streaming':
+            asyncio.run(self._finalize_streaming())
+            total_ms = (time.perf_counter() - start) * 1000
+            logger.info(f"Recording stopped (streaming: {total_ms:.0f}ms)")
+        else:
+            asyncio.run(self._process_single_request())
+            total_ms = (time.perf_counter() - start) * 1000
+            logger.info(f"Recording stopped (single: {total_ms:.0f}ms)")
+
+    def _cleanup_streaming(self):
+        """Clean up streaming resources."""
+        if self._streaming_loop is not None:
+            self._streaming_loop.call_soon_threadsafe(self._streaming_loop.stop)
+            if self._streaming_thread is not None:
+                self._streaming_thread.join(timeout=1.0)
+            self._streaming_loop = None
+            self._streaming_thread = None
+
+    async def _finalize_streaming(self):
+        """Finalize streaming mode - wait for pending tasks and process final chunk."""
+        import time as time_module
+
+        settings = load_settings()
+        provider = settings.get('provider', 'groq')
+        api_key = settings.get('groqApiKey') if provider == 'groq' else settings.get('openaiApiKey')
+        enable_cleanup = settings.get('enableCleanup', True)
+
+        if not api_key:
+            self.waybar_state.error("API key not set")
+            self.audio_feedback.play_error()
+            self._cleanup_streaming()
+            return
+
+        # Get any remaining pending audio
+        with self._streaming_lock:
+            final_audio = self._streaming_pending_audio.copy()
+            self._streaming_pending_audio = []
+            pending_tasks = self._streaming_tasks.copy()
+            chunk_count = len(pending_tasks)
+
+        # Wait for all pending transcription tasks (these were uploaded during recording)
+        logger.debug(f"Waiting for {len(pending_tasks)} pending chunks...")
+        for task in pending_tasks:
+            try:
+                task.result(timeout=10.0)  # Wait up to 10s per task
+            except Exception as e:
+                logger.error(f"Task error: {e}")
+
+        # Process final chunk (the audio after the last full chunk)
+        if final_audio:
+            final_chunk = np.concatenate(final_audio, axis=0).flatten()
+            if len(final_chunk) >= SAMPLE_RATE * 0.3:  # At least 0.3s
+                logger.debug(f"Processing final chunk ({len(final_chunk)/SAMPLE_RATE:.1f}s)")
+                t0 = time_module.perf_counter()
+
+                transcriber = ChunkedTranscriber(api_key, provider)
+                async with httpx.AsyncClient(timeout=30.0) as client:
+                    text = await transcriber._transcribe_with_client(client, final_chunk)
+                    if text and not transcriber._is_hallucination(text):
+                        with self._streaming_lock:
+                            self._streaming_transcripts.append((chunk_count, text))
+
+                t1 = time_module.perf_counter()
+                logger.info(f"Final chunk: {(t1-t0)*1000:.0f}ms")
+
+        # Combine all transcripts in order
+        with self._streaming_lock:
+            sorted_transcripts = sorted(self._streaming_transcripts, key=lambda x: x[0])
+            raw_text = " ".join(t[1].strip() for t in sorted_transcripts if t[1].strip())
+
+        # Cleanup streaming resources
+        self._cleanup_streaming()
+
+        if not raw_text:
+            logger.warning("No transcription result from streaming")
+            self.waybar_state.idle()
+            return
+
+        logger.info(f"Combined {len(sorted_transcripts)} chunks")
+
+        # Apply text processing (spoken punctuation, replacements)
+        raw_text = self.text_processor.process(raw_text)
+
+        # Cleanup (if enabled)
+        if enable_cleanup:
+            t0 = time_module.perf_counter()
+            transcriber = ChunkedTranscriber(api_key, provider)
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                cleaned_text = await transcriber._cleanup_with_client(client, raw_text)
+            t1 = time_module.perf_counter()
+            logger.info(f"Cleanup: {(t1-t0)*1000:.0f}ms")
+        else:
+            cleaned_text = raw_text
+
+        # Type the result
+        type_text(cleaned_text)
+        logger.info(f"Result: {cleaned_text[:50]}...")
+
+        # Set waybar back to idle
+        self.waybar_state.idle()
+
+        # Save
+        storage = StorageManager()
+        storage.save_transcript(
+            raw=raw_text,
+            cleaned=cleaned_text,
+            timestamp=datetime.now().isoformat(),
+        )
+
+    async def _process_single_request(self):
+        """Process audio with single request mode."""
+        import time as time_module
+
+        settings = load_settings()
+        provider = settings.get('provider', 'groq')
+        api_key = settings.get('groqApiKey') if provider == 'groq' else settings.get('openaiApiKey')
+        enable_cleanup = settings.get('enableCleanup', True)
+
+        if not api_key:
+            self.waybar_state.error("API key not set")
+            self.audio_feedback.play_error()
+            return
+
+        # Combine all audio
+        audio = np.concatenate(self.audio_data, axis=0).flatten()
+        duration = len(audio) / SAMPLE_RATE
+
+        # Validate
+        valid, error = AudioValidator.validate(audio)
+        if not valid:
+            logger.warning(f"Audio validation failed: {error}")
+            self.waybar_state.idle()
+            return
+
+        audio = AudioProcessor.normalize(audio)
+
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            transcriber = ChunkedTranscriber(api_key, provider)
+
+            logger.info(f"Single request mode ({duration:.1f}s audio)")
+            t0 = time_module.perf_counter()
+            raw_text = await transcriber._transcribe_with_client(client, audio)
+            t1 = time_module.perf_counter()
+            logger.info(f"Transcription: {(t1-t0)*1000:.0f}ms")
+
+            if not raw_text:
+                logger.warning("No transcription result")
+                self.waybar_state.idle()
+                return
+
+            # Apply text processing (spoken punctuation, replacements)
+            raw_text = self.text_processor.process(raw_text)
+
+            # Cleanup (if enabled)
+            if enable_cleanup:
+                t0 = time_module.perf_counter()
+                cleaned_text = await transcriber._cleanup_with_client(client, raw_text)
+                t1 = time_module.perf_counter()
+                logger.info(f"Cleanup: {(t1-t0)*1000:.0f}ms")
+            else:
+                cleaned_text = raw_text
+
+            # Type the result
+            type_text(cleaned_text)
+            logger.info(f"Result: {cleaned_text[:50]}...")
+
+            # Set waybar back to idle
+            self.waybar_state.idle()
+
+            # Save
+            storage = StorageManager()
+            storage.save_transcript(
+                raw=raw_text,
+                cleaned=cleaned_text,
+                timestamp=datetime.now().isoformat(),
+            )
 
     async def _process_parallel_chunks(self):
         """Process audio - use single request for short audio, parallel for long."""
@@ -1359,7 +1907,8 @@ class VoiceDictationServer:
         enable_cleanup = settings.get('enableCleanup', True)
 
         if not api_key:
-            notify("❌ API key not set", 1500)
+            self.waybar_state.error("API key not set")
+            self.audio_feedback.play_error()
             return
 
         # Combine all audio
@@ -1370,6 +1919,7 @@ class VoiceDictationServer:
         valid, error = AudioValidator.validate(audio)
         if not valid:
             logger.warning(f"Audio validation failed: {error}")
+            self.waybar_state.idle()
             return
 
         audio = AudioProcessor.normalize(audio)
@@ -1407,7 +1957,11 @@ class VoiceDictationServer:
 
             if not raw_text:
                 logger.warning("No transcription result")
+                self.waybar_state.idle()
                 return
+
+            # Apply text processing (spoken punctuation, replacements)
+            raw_text = self.text_processor.process(raw_text)
 
             # Cleanup (if enabled)
             if enable_cleanup:
@@ -1421,6 +1975,9 @@ class VoiceDictationServer:
             # Type the result
             type_text(cleaned_text)
             logger.info(f"Result: {cleaned_text[:50]}...")
+
+            # Set waybar back to idle
+            self.waybar_state.idle()
 
             # Save
             storage = StorageManager()
@@ -1436,12 +1993,15 @@ class VoiceDictationServer:
         async for event in process_audio_with_graph(audio):
             if event.type == EventType.STT_OUTPUT:
                 text = event.data
+                # Apply text processing
+                text = self.text_processor.process(text)
                 type_text(text)
-                # Text is typed directly - no notification needed
+                self.waybar_state.idle()
                 logger.debug(f"Transcribed: {text[:50]}...")
 
             elif event.type == EventType.STT_ERROR:
-                notify(f"❌ Error", 1500)  # Only notify on errors
+                self.waybar_state.error(event.error or "Error")
+                self.audio_feedback.play_error()
                 logger.error(f"Transcription error: {event.error}")
 
     def run(self):
@@ -1476,6 +2036,64 @@ class VoiceDictationServer:
             self._cleanup()
 
 
+def setup_waybar() -> None:
+    """Install Waybar integration for oflow."""
+    script_dir = Path(__file__).parent
+    waybar_config_src = script_dir / "waybar-oflow.jsonc"
+    waybar_css_src = script_dir / "waybar-oflow.css"
+
+    # Find waybar config
+    waybar_dir = Path.home() / ".config" / "waybar"
+    waybar_config = waybar_dir / "config.jsonc"
+    if not waybar_config.exists():
+        waybar_config = waybar_dir / "config"
+
+    waybar_style = waybar_dir / "style.css"
+
+    print("oflow Waybar Setup")
+    print("=" * 40)
+
+    if not waybar_dir.exists():
+        print(f"Waybar config directory not found: {waybar_dir}")
+        print("\nManual install:")
+        print(f"  1. Copy module config from: {waybar_config_src}")
+        print(f"  2. Copy CSS from: {waybar_css_src}")
+        sys.exit(1)
+
+    # Show module config
+    if waybar_config.exists():
+        content = waybar_config.read_text()
+        if "custom/oflow" in content:
+            print("oflow module already in Waybar config")
+        else:
+            print(f"\nAdd to your Waybar config ({waybar_config}):")
+            print()
+            print('  1. Add "custom/oflow" to modules-right (or left/center)')
+            print()
+            print("  2. Add this module definition:")
+            print()
+            print(waybar_config_src.read_text())
+
+    # Install CSS
+    if waybar_style.exists():
+        css_content = waybar_style.read_text()
+        if "#custom-oflow" in css_content:
+            print("oflow styles already in Waybar CSS")
+        else:
+            print(f"\nInstalling CSS to {waybar_style}...")
+            with open(waybar_style, "a") as f:
+                f.write("\n/* oflow voice dictation */\n")
+                f.write(waybar_css_src.read_text())
+            print("CSS installed")
+    else:
+        print(f"\nWaybar style.css not found at {waybar_style}")
+        print("Add this CSS manually:")
+        print(waybar_css_src.read_text())
+
+    print()
+    print("Restart Waybar: killall waybar && waybar &")
+
+
 def main() -> None:
     """
     Main entry point for Oflow.
@@ -1485,9 +2103,20 @@ def main() -> None:
     """
     if len(sys.argv) > 1:
         cmd = sys.argv[1]
+
+        # Handle setup commands
+        if cmd == "setup":
+            if len(sys.argv) > 2 and sys.argv[2] == "waybar":
+                setup_waybar()
+                sys.exit(0)
+            else:
+                print("Usage: oflow setup waybar")
+                sys.exit(1)
+
         if cmd not in ("start", "stop", "toggle"):
             print(f"Unknown command: {cmd}", file=sys.stderr)
             print("Usage: oflow [start|stop|toggle]", file=sys.stderr)
+            print("       oflow setup waybar", file=sys.stderr)
             sys.exit(1)
 
         try:
