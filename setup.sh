@@ -191,33 +191,47 @@ fi
 echo ""
 print_status "Hyprland keybinding setup..."
 
-HYPR_BINDING="bind = SUPER, I, exec, $SCRIPT_DIR/.venv/bin/python $SCRIPT_DIR/oflow.py start
-bindr = SUPER, I, exec, $SCRIPT_DIR/.venv/bin/python $SCRIPT_DIR/oflow.py stop"
+# Default to Copilot key (XF86Assistant) if available, otherwise Super+V
+HYPR_BINDING_COPILOT="# Oflow voice dictation (push-to-talk: hold Copilot key)
+bind = , XF86Assistant, exec, $SCRIPT_DIR/.venv/bin/python $SCRIPT_DIR/oflow.py start
+bindr = , XF86Assistant, exec, $SCRIPT_DIR/.venv/bin/python $SCRIPT_DIR/oflow.py stop"
+
+HYPR_BINDING_SUPER_V="# Oflow voice dictation (push-to-talk: hold Super+V)
+bind = SUPER, V, exec, $SCRIPT_DIR/.venv/bin/python $SCRIPT_DIR/oflow.py start
+bindr = SUPER, V, exec, $SCRIPT_DIR/.venv/bin/python $SCRIPT_DIR/oflow.py stop"
 
 echo ""
-echo "Add these lines to ~/.config/hypr/bindings.conf:"
+echo "Choose your push-to-talk hotkey:"
+echo "  1) Copilot key (XF86Assistant) - if your keyboard has one"
+echo "  2) Super+V - works on all keyboards"
 echo ""
-echo -e "${YELLOW}$HYPR_BINDING${NC}"
-echo ""
+read -p "Enter choice [1/2]: " -n 1 -r
+echo
+
+if [[ $REPLY == "1" ]]; then
+    HYPR_BINDING="$HYPR_BINDING_COPILOT"
+    HOTKEY_DESC="Copilot key"
+else
+    HYPR_BINDING="$HYPR_BINDING_SUPER_V"
+    HOTKEY_DESC="Super+V"
+fi
 
 BINDINGS_FILE="$HOME/.config/hypr/bindings.conf"
 if [[ -f "$BINDINGS_FILE" ]]; then
     if grep -q "oflow" "$BINDINGS_FILE"; then
         print_success "Keybindings already configured"
     else
-        read -p "Add keybindings automatically? [y/N] " -n 1 -r
-        echo
-        if [[ $REPLY =~ ^[Yy]$ ]]; then
-            echo "" >> "$BINDINGS_FILE"
-            echo "# Oflow voice dictation" >> "$BINDINGS_FILE"
-            echo "$HYPR_BINDING" >> "$BINDINGS_FILE"
-            print_success "Keybindings added to $BINDINGS_FILE"
-            print_warning "Run 'hyprctl reload' to apply"
-        fi
+        echo ""
+        echo "Adding $HOTKEY_DESC as push-to-talk hotkey..."
+        echo "" >> "$BINDINGS_FILE"
+        echo "$HYPR_BINDING" >> "$BINDINGS_FILE"
+        print_success "Keybindings added to $BINDINGS_FILE"
+        hyprctl reload &>/dev/null && print_success "Hyprland reloaded" || print_warning "Run 'hyprctl reload' to apply"
     fi
 else
     print_warning "Hyprland config not found at $BINDINGS_FILE"
-    echo "Add the keybindings manually to your Hyprland config"
+    echo "Add these keybindings manually:"
+    echo -e "${YELLOW}$HYPR_BINDING${NC}"
 fi
 
 # -----------------------------------------------------------------------------

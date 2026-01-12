@@ -39,14 +39,14 @@ chmod +x oflow-*.AppImage
 
 1. Get a free Groq API key: https://console.groq.com/keys
 2. Open oflow → Settings → paste your Groq key
-3. Press **Super+I** to record, release to transcribe
+3. Hold **Copilot key** (or **Super+V**) to record, release to transcribe
 
 That's it.
 
 ## How It Works
 
 ```
-Hold Super+I → Speak → Release → Text appears in active window
+Hold Copilot key → Speak → Release → Text appears in active window
 ```
 
 | You say | You get |
@@ -128,7 +128,7 @@ Settings in `~/.oflow/settings.json`:
 
 ## Troubleshooting
 
-**Super+I not working?**
+**Hotkey not working?**
 ```bash
 hyprctl reload
 ```

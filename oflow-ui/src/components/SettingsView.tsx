@@ -20,7 +20,8 @@ export function SettingsView() {
     const [settings, setSettings] = useState<Settings>({
         enableCleanup: true,
         enableMemory: false,
-        provider: 'groq'
+        provider: 'groq',
+        transcriptionMode: 'single'
     });
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
@@ -144,6 +145,19 @@ export function SettingsView() {
             showToast("Failed to change shortcut", "error");
         } finally {
             setShortcutSaving(false);
+        }
+    };
+
+    const handleTranscriptionModeChange = async (mode: 'single' | 'streaming') => {
+        const newSettings = { ...settings, transcriptionMode: mode };
+        setSettings(newSettings);
+
+        try {
+            await saveSettings(newSettings);
+            showToast(`Transcription mode: ${mode === 'streaming' ? 'Streaming (faster)' : 'Single request'}`, "success");
+        } catch (error) {
+            console.error("Failed to save transcription mode:", error);
+            showToast("Failed to change mode", "error");
         }
     };
 
@@ -317,13 +331,53 @@ export function SettingsView() {
                         <CardDescription>Control how your audio is processed.</CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-6">
+                        {/* Transcription Mode */}
+                        <div className="space-y-3">
+                            <Label>Transcription Mode</Label>
+                            <div className="grid grid-cols-2 gap-3">
+                                <button
+                                    onClick={() => handleTranscriptionModeChange('single')}
+                                    className={`p-4 rounded-lg border-2 text-left transition-all ${
+                                        settings.transcriptionMode === 'single'
+                                            ? 'border-primary bg-primary/5'
+                                            : 'border-muted hover:border-muted-foreground/50'
+                                    }`}
+                                    disabled={isLoading}
+                                >
+                                    <div className="font-medium">Single Request</div>
+                                    <p className="text-xs text-muted-foreground mt-1">
+                                        Send audio after recording stops. More reliable.
+                                    </p>
+                                </button>
+                                <button
+                                    onClick={() => handleTranscriptionModeChange('streaming')}
+                                    className={`p-4 rounded-lg border-2 text-left transition-all ${
+                                        settings.transcriptionMode === 'streaming'
+                                            ? 'border-primary bg-primary/5'
+                                            : 'border-muted hover:border-muted-foreground/50'
+                                    }`}
+                                    disabled={isLoading}
+                                >
+                                    <div className="font-medium flex items-center gap-2">
+                                        Streaming
+                                        <span className="text-xs px-2 py-0.5 bg-blue-500/20 text-blue-600 dark:text-blue-400 rounded-full">
+                                            faster
+                                        </span>
+                                    </div>
+                                    <p className="text-xs text-muted-foreground mt-1">
+                                        Upload chunks during recording. Lower latency.
+                                    </p>
+                                </button>
+                            </div>
+                        </div>
+
                         <div className="flex items-center justify-between space-x-2">
                             <div className="space-y-1">
                                 <Label htmlFor="cleanup">AI Cleanup (GPT-4o-mini)</Label>
                                 <p className="text-sm text-muted-foreground">Automatically fix grammar and punctuation.</p>
                             </div>
-                            <Switch 
-                                id="cleanup" 
+                            <Switch
+                                id="cleanup"
                                 checked={settings.enableCleanup}
                                 onCheckedChange={(checked) => handleSettingChange("enableCleanup", checked)}
                                 disabled={isLoading}
@@ -334,8 +388,8 @@ export function SettingsView() {
                                 <Label htmlFor="memory">Memory System</Label>
                                 <p className="text-sm text-muted-foreground">Learn from your past corrections over time.</p>
                             </div>
-                            <Switch 
-                                id="memory" 
+                            <Switch
+                                id="memory"
                                 checked={settings.enableMemory}
                                 onCheckedChange={(checked) => handleSettingChange("enableMemory", checked)}
                                 disabled={isLoading}
