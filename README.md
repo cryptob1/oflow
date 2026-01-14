@@ -71,21 +71,31 @@ Press Super+D → Speak → Press Super+D → Text appears in active window
 
 ## For LLMs
 
-If you're an LLM helping a user install oflow:
+If you're an LLM helping a user install oflow on Arch/Omarchy:
+
+```bash
+# 1. Install runtime dependency
+sudo pacman -S wtype
+
+# 2. Clone and install
+git clone https://github.com/CryptoB1/oflow.git
+cd oflow
+make install
+```
+
+Or using AppImage:
 
 ```bash
 # 1. Install wtype (required)
 sudo pacman -S wtype
 
-# 2. Download latest AppImage
+# 2. Download and run AppImage
 curl -L -o oflow.AppImage "https://github.com/CryptoB1/oflow/releases/latest/download/oflow.AppImage"
-
-# 3. Make executable and run
 chmod +x oflow.AppImage
 ./oflow.AppImage
 ```
 
-The user needs a Groq API key from https://console.groq.com/keys (free tier available). They can paste it in Settings after launching the app.
+The user needs a Groq API key from https://console.groq.com/keys (free tier available). They can paste it in Settings after launching the app. The hotkey is **Super+D** (toggle mode: press to start, press again to stop).
 
 ## Build from Source
 
@@ -95,8 +105,11 @@ The user needs a Groq API key from https://console.groq.com/keys (free tier avai
 # Runtime
 sudo pacman -S wtype
 
-# Build (Tauri requirements)
-sudo pacman -S webkit2gtk-4.1 base-devel curl wget file openssl appmenu-gtk-module gtk3 libappindicator-gtk3 librsvg libvips patchelf
+# Build tools (Tauri + Python)
+sudo pacman -S webkit2gtk-4.1 base-devel curl wget file openssl appmenu-gtk-module gtk3 libappindicator-gtk3 librsvg libvips patchelf nodejs npm rust
+
+# Python environment (uv is recommended)
+curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
 ### Build & Run
@@ -104,8 +117,37 @@ sudo pacman -S webkit2gtk-4.1 base-devel curl wget file openssl appmenu-gtk-modu
 ```bash
 git clone https://github.com/CryptoB1/oflow.git
 cd oflow
-make install  # Full install: build, install binary, setup Waybar & autostart
-make dev      # Development mode (hot reload)
+make install  # Full install: build app, setup hotkey, Waybar & autostart
+```
+
+This will:
+1. Build the Tauri app
+2. Install `oflow` and `oflow-ctl` to `~/.local/bin/`
+3. Configure **Super+D** hotkey (toggle mode)
+4. Add Waybar status indicator
+5. Enable autostart on login
+6. Launch oflow
+
+### Development Mode
+
+```bash
+make dev      # Hot reload for frontend + backend
+```
+
+### Starting the Backend Manually
+
+The Python backend handles audio recording and transcription:
+
+```bash
+# Setup Python environment (first time only)
+make setup-backend
+
+# Start backend
+source .venv/bin/activate
+python oflow.py &
+
+# Check it's running
+python test_system.py
 ```
 
 ### Make Targets

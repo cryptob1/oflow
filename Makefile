@@ -1,4 +1,4 @@
-.PHONY: help run stop dev build test test-unit test-integration test-all format lint clean install uninstall setup-backend setup-frontend setup-waybar setup-autostart setup-hotkey
+.PHONY: help run stop dev build test test-unit test-integration test-all format lint clean install uninstall setup-backend setup-frontend setup-waybar setup-autostart setup-hotkey install-oflow-ctl
 
 help:
 	@echo "Oflow - Voice Dictation for Hyprland/Wayland"
@@ -105,7 +105,7 @@ install: build setup-hotkey
 	@echo "Installation complete!"
 	@echo "  - Binary: ~/.local/bin/oflow"
 	@echo "  - Click the ○ icon in Waybar to open settings"
-	@echo "  - Hold Super+B to record, release to transcribe"
+	@echo "  - Press Super+D to start recording, press again to stop and transcribe"
 	@echo ""
 	@echo "Starting oflow..."
 	@~/.local/bin/oflow-toggle
@@ -145,28 +145,51 @@ setup-autostart:
 	@echo "StartupNotify=false" >> ~/.config/autostart/oflow.desktop
 	@echo "Autostart entry created"
 
-setup-hotkey:
-	@echo "Setting up Super+B hotkey..."
+install-oflow-ctl:
+	@echo "Installing oflow-ctl..."
+	@mkdir -p ~/.local/bin
+	@echo '#!/usr/bin/env python3' > ~/.local/bin/oflow-ctl
+	@echo '"""Simple oflow socket controller for Hyprland bindings."""' >> ~/.local/bin/oflow-ctl
+	@echo 'import socket' >> ~/.local/bin/oflow-ctl
+	@echo 'import sys' >> ~/.local/bin/oflow-ctl
+	@echo '' >> ~/.local/bin/oflow-ctl
+	@echo 'def send_command(cmd):' >> ~/.local/bin/oflow-ctl
+	@echo '    try:' >> ~/.local/bin/oflow-ctl
+	@echo '        s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)' >> ~/.local/bin/oflow-ctl
+	@echo '        s.settimeout(1)' >> ~/.local/bin/oflow-ctl
+	@echo "        s.connect('/tmp/voice-dictation.sock')" >> ~/.local/bin/oflow-ctl
+	@echo '        s.send(cmd.encode())' >> ~/.local/bin/oflow-ctl
+	@echo '        s.close()' >> ~/.local/bin/oflow-ctl
+	@echo '    except Exception:' >> ~/.local/bin/oflow-ctl
+	@echo '        pass  # Silently fail - socket might not exist' >> ~/.local/bin/oflow-ctl
+	@echo '' >> ~/.local/bin/oflow-ctl
+	@echo "if __name__ == '__main__':" >> ~/.local/bin/oflow-ctl
+	@echo '    if len(sys.argv) > 1:' >> ~/.local/bin/oflow-ctl
+	@echo '        send_command(sys.argv[1])' >> ~/.local/bin/oflow-ctl
+	@chmod +x ~/.local/bin/oflow-ctl
+	@echo "oflow-ctl installed"
+
+setup-hotkey: install-oflow-ctl
+	@echo "Setting up Super+D hotkey..."
 	@if [ -f ~/.config/hypr/bindings.conf ]; then \
 		if grep -q "# Oflow voice dictation" ~/.config/hypr/bindings.conf; then \
 			sed -i '/# Oflow voice dictation/,/^$$/d' ~/.config/hypr/bindings.conf; \
 		fi; \
 		echo "" >> ~/.config/hypr/bindings.conf; \
-		echo "# Oflow voice dictation (push-to-talk: hold Super+B)" >> ~/.config/hypr/bindings.conf; \
-		echo "bind = SUPER, B, exec, $(PWD)/.venv/bin/python $(PWD)/oflow.py start" >> ~/.config/hypr/bindings.conf; \
-		echo "bindr = SUPER, B, exec, $(PWD)/.venv/bin/python $(PWD)/oflow.py stop" >> ~/.config/hypr/bindings.conf; \
+		echo "# Oflow voice dictation (toggle: press Super+D to start/stop)" >> ~/.config/hypr/bindings.conf; \
+		echo "bind = SUPER, D, exec, ~/.local/bin/oflow-ctl toggle" >> ~/.config/hypr/bindings.conf; \
 		hyprctl reload 2>/dev/null || true; \
-		echo "Hotkey configured: Super+B"; \
+		echo "Hotkey configured: Super+D (toggle mode)"; \
 	else \
 		echo "Hyprland bindings.conf not found"; \
 	fi
 
 uninstall:
 	@echo "Uninstalling oflow..."
-	@rm -f ~/.local/bin/oflow ~/.local/bin/oflow-toggle
+	@rm -f ~/.local/bin/oflow ~/.local/bin/oflow-toggle ~/.local/bin/oflow-ctl
 	@rm -f ~/.config/autostart/oflow.desktop
 	@if [ -f ~/.config/hypr/bindings.conf ]; then \
-		sed -i '/# Oflow voice dictation/,/bindr.*oflow/d' ~/.config/hypr/bindings.conf; \
+		sed -i '/# Oflow voice dictation/,/^$$/d' ~/.config/hypr/bindings.conf; \
 		hyprctl reload 2>/dev/null || true; \
 	fi
 	@$(MAKE) stop
