@@ -111,7 +111,6 @@ DEBUG_MODE = os.getenv("DEBUG_MODE", "false").lower() == "true"
 DEFAULT_ENABLE_CLEANUP = os.getenv("ENABLE_CLEANUP", "true").lower() == "true"
 DEFAULT_ENABLE_MEMORY = os.getenv("ENABLE_MEMORY", "false").lower() == "true"
 DEFAULT_PROVIDER = os.getenv("PROVIDER", "groq")  # Default to Groq (faster)
-DEFAULT_TRANSCRIPTION_MODE = os.getenv("TRANSCRIPTION_MODE", "single")  # single or streaming
 
 
 def ensure_data_dir() -> None:
@@ -153,7 +152,6 @@ def load_settings() -> dict:
                     'openaiApiKey': settings.get('openaiApiKey') or OPENAI_API_KEY,
                     'groqApiKey': settings.get('groqApiKey') or GROQ_API_KEY,
                     'provider': settings.get('provider', DEFAULT_PROVIDER),
-                    'transcriptionMode': settings.get('transcriptionMode', DEFAULT_TRANSCRIPTION_MODE),
                     # New settings for VoxType-like features
                     'audioFeedbackTheme': settings.get('audioFeedbackTheme', 'default'),
                     'audioFeedbackVolume': settings.get('audioFeedbackVolume', 0.3),
@@ -170,7 +168,6 @@ def load_settings() -> dict:
         'openaiApiKey': OPENAI_API_KEY,
         'groqApiKey': GROQ_API_KEY,
         'provider': DEFAULT_PROVIDER,
-        'transcriptionMode': DEFAULT_TRANSCRIPTION_MODE,
         # Defaults for new features
         'audioFeedbackTheme': 'default',
         'audioFeedbackVolume': 0.3,
@@ -1491,16 +1488,6 @@ class VoiceDictationServer:
         # Persistent HTTP client for connection reuse
         self._http_client: httpx.AsyncClient | None = None
 
-        # Streaming mode state
-        self._transcription_mode = 'single'  # Will be set on recording start
-        self._streaming_loop: asyncio.AbstractEventLoop | None = None
-        self._streaming_thread: threading.Thread | None = None
-        self._streaming_transcripts: list[str] = []
-        self._streaming_pending_audio: list[np.ndarray] = []
-        self._streaming_tasks: list[asyncio.Task] = []
-        self._streaming_lock = threading.Lock()
-        self._chunk_seconds = 1.0  # Upload chunks every 1 second
-
         # Load settings for audio feedback and waybar
         settings = load_settings()
         self.audio_feedback = AudioFeedback(
@@ -1574,22 +1561,6 @@ class VoiceDictationServer:
         if self.is_recording:
             self.audio_queue.put(indata.copy())
 
-            # In streaming mode, also accumulate for chunk uploads
-            if hasattr(self, '_transcription_mode') and self._transcription_mode == 'streaming':
-                with self._streaming_lock:
-                    self._streaming_pending_audio.append(indata.copy())
-
-                    # Check if we have enough for a chunk
-                    total_samples = sum(len(a) for a in self._streaming_pending_audio)
-                    if total_samples >= int(SAMPLE_RATE * self._chunk_seconds):
-                        # Combine into chunk and schedule upload
-                        chunk = np.concatenate(self._streaming_pending_audio, axis=0).flatten()
-                        chunk_index = len(self._streaming_tasks)
-                        self._streaming_pending_audio = []
-
-                        # Schedule upload (don't block callback)
-                        self._schedule_chunk_upload(chunk, chunk_index)
-
     def _signal_handler(self, signum, frame):
         logger.info(f"Received signal {signum}, shutting down...")
         self._running = False
@@ -1627,7 +1598,6 @@ class VoiceDictationServer:
 
         # Reload settings in case they changed
         settings = load_settings()
-        self._transcription_mode = settings.get('transcriptionMode', 'single')
 
         # Update text processor with current settings
         self.text_processor = TextProcessor(
@@ -1635,65 +1605,7 @@ class VoiceDictationServer:
             replacements=settings.get('wordReplacements', {}),
         )
 
-        if self._transcription_mode == 'streaming':
-            # Initialize streaming state
-            self._streaming_transcripts = []
-            self._streaming_pending_audio = []
-            self._streaming_tasks = []
-
-            # Start async event loop in background thread
-            self._streaming_loop = asyncio.new_event_loop()
-            self._streaming_thread = threading.Thread(
-                target=self._run_streaming_loop,
-                daemon=True
-            )
-            self._streaming_thread.start()
-            logger.info("Recording started (streaming mode)")
-        else:
-            logger.info("Recording started (single request mode)")
-
-    def _run_streaming_loop(self):
-        """Run the async event loop for streaming transcription."""
-        asyncio.set_event_loop(self._streaming_loop)
-        self._streaming_loop.run_forever()
-
-    def _schedule_chunk_upload(self, audio_chunk: np.ndarray, chunk_index: int):
-        """Schedule a chunk for transcription in the streaming loop."""
-        if self._streaming_loop is None:
-            return
-
-        async def transcribe_chunk():
-            settings = load_settings()
-            provider = settings.get('provider', 'groq')
-            api_key = settings.get('groqApiKey') if provider == 'groq' else settings.get('openaiApiKey')
-
-            if not api_key:
-                return ""
-
-            # Check if chunk has enough audio
-            max_amplitude = np.max(np.abs(audio_chunk))
-            if max_amplitude < MIN_AUDIO_AMPLITUDE:
-                logger.debug(f"Chunk {chunk_index}: skipping silent audio")
-                return ""
-
-            transcriber = ChunkedTranscriber(api_key, provider)
-            try:
-                async with httpx.AsyncClient(timeout=30.0) as client:
-                    text = await transcriber._transcribe_with_client(client, audio_chunk)
-                    if text and not transcriber._is_hallucination(text):
-                        with self._streaming_lock:
-                            # Store with index to maintain order
-                            self._streaming_transcripts.append((chunk_index, text))
-                        logger.debug(f"Chunk {chunk_index}: '{text[:30]}...'")
-                        return text
-            except Exception as e:
-                logger.error(f"Chunk {chunk_index} error: {e}")
-            return ""
-
-        # Schedule the coroutine
-        future = asyncio.run_coroutine_threadsafe(transcribe_chunk(), self._streaming_loop)
-        with self._streaming_lock:
-            self._streaming_tasks.append(future)
+        logger.info("Recording started")
 
     def _stop_recording(self):
         self.is_recording = False
@@ -1702,7 +1614,6 @@ class VoiceDictationServer:
         self.waybar_state.transcribing()
         self.audio_feedback.play_stop()
 
-        import time
         start = time.perf_counter()
         time.sleep(0.1)  # Brief pause to collect final audio
 
@@ -1716,131 +1627,15 @@ class VoiceDictationServer:
 
         if not self.audio_data:
             logger.info("Recording stopped (no audio)")
-            self._cleanup_streaming()
-            return
-
-        # Check which mode we're in
-        mode = getattr(self, '_transcription_mode', 'single')
-
-        if mode == 'streaming':
-            asyncio.run(self._finalize_streaming())
-            total_ms = (time.perf_counter() - start) * 1000
-            logger.info(f"Recording stopped (streaming: {total_ms:.0f}ms)")
-        else:
-            asyncio.run(self._process_single_request())
-            total_ms = (time.perf_counter() - start) * 1000
-            logger.info(f"Recording stopped (single: {total_ms:.0f}ms)")
-
-    def _cleanup_streaming(self):
-        """Clean up streaming resources."""
-        if self._streaming_loop is not None:
-            self._streaming_loop.call_soon_threadsafe(self._streaming_loop.stop)
-            if self._streaming_thread is not None:
-                self._streaming_thread.join(timeout=1.0)
-            self._streaming_loop = None
-            self._streaming_thread = None
-
-    async def _finalize_streaming(self):
-        """Finalize streaming mode - wait for pending tasks and process final chunk."""
-        import time as time_module
-
-        logger.info("_finalize_streaming started")
-
-        settings = load_settings()
-        provider = settings.get('provider', 'groq')
-        api_key = settings.get('groqApiKey') if provider == 'groq' else settings.get('openaiApiKey')
-        enable_cleanup = settings.get('enableCleanup', True)
-
-        if not api_key:
-            self.waybar_state.error("API key not set")
-            self.audio_feedback.play_error()
-            self._cleanup_streaming()
-            return
-
-        # Stop streaming loop first to prevent deadlocks
-        logger.info("Stopping streaming loop...")
-        self._cleanup_streaming()
-        logger.info("Streaming loop stopped")
-
-        # Get any remaining pending audio (no lock needed now that loop is stopped)
-        logger.info("Getting pending audio...")
-        with self._streaming_lock:
-            final_audio = self._streaming_pending_audio.copy()
-            self._streaming_pending_audio = []
-            pending_tasks = self._streaming_tasks.copy()
-            chunk_count = len(pending_tasks)
-
-        # Wait for all pending transcription tasks (these were uploaded during recording)
-        logger.debug(f"Waiting for {len(pending_tasks)} pending chunks...")
-        for task in pending_tasks:
-            try:
-                task.result(timeout=10.0)  # Wait up to 10s per task
-            except Exception as e:
-                logger.error(f"Task error: {e}")
-
-        # Process final chunk (the audio after the last full chunk)
-        if final_audio:
-            final_chunk = np.concatenate(final_audio, axis=0).flatten()
-            if len(final_chunk) >= SAMPLE_RATE * 0.3:  # At least 0.3s
-                logger.debug(f"Processing final chunk ({len(final_chunk)/SAMPLE_RATE:.1f}s)")
-                t0 = time_module.perf_counter()
-
-                transcriber = ChunkedTranscriber(api_key, provider)
-                async with httpx.AsyncClient(timeout=30.0) as client:
-                    text = await transcriber._transcribe_with_client(client, final_chunk)
-                    if text and not transcriber._is_hallucination(text):
-                        with self._streaming_lock:
-                            self._streaming_transcripts.append((chunk_count, text))
-
-                t1 = time_module.perf_counter()
-                logger.info(f"Final chunk: {(t1-t0)*1000:.0f}ms")
-
-        # Combine all transcripts in order
-        with self._streaming_lock:
-            sorted_transcripts = sorted(self._streaming_transcripts, key=lambda x: x[0])
-            raw_text = " ".join(t[1].strip() for t in sorted_transcripts if t[1].strip())
-
-        # Cleanup streaming resources
-        self._cleanup_streaming()
-
-        if not raw_text:
-            logger.warning("No transcription result from streaming")
             self.waybar_state.idle()
             return
 
-        logger.info(f"Combined {len(sorted_transcripts)} chunks")
+        asyncio.run(self._process_transcription())
+        total_ms = (time.perf_counter() - start) * 1000
+        logger.info(f"Recording stopped ({total_ms:.0f}ms)")
 
-        # Apply text processing (spoken punctuation, replacements)
-        raw_text = self.text_processor.process(raw_text)
-
-        # Cleanup (if enabled)
-        if enable_cleanup:
-            t0 = time_module.perf_counter()
-            transcriber = ChunkedTranscriber(api_key, provider)
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                cleaned_text = await transcriber._cleanup_with_client(client, raw_text)
-            t1 = time_module.perf_counter()
-            logger.info(f"Cleanup: {(t1-t0)*1000:.0f}ms")
-        else:
-            cleaned_text = raw_text
-
-        # Type the result
-        type_text(cleaned_text)
-        logger.info(f"Result: {cleaned_text[:50]}...")
-
-        # Set waybar back to idle
-        self.waybar_state.idle()
-
-        # Save
-        storage = StorageManager()
-        storage.save_transcript(
-            raw=raw_text,
-            cleaned=cleaned_text,
-            timestamp=datetime.now().isoformat(),
-        )
-
-    async def _process_single_request(self):
-        """Process audio with single request mode."""
+    async def _process_transcription(self):
+        """Process recorded audio: transcribe, clean up, and type result."""
         import time as time_module
 
         settings = load_settings()
@@ -1869,7 +1664,7 @@ class VoiceDictationServer:
         async with httpx.AsyncClient(timeout=30.0) as client:
             transcriber = ChunkedTranscriber(api_key, provider)
 
-            logger.info(f"Single request mode ({duration:.1f}s audio)")
+            logger.info(f"Processing {duration:.1f}s audio")
             t0 = time_module.perf_counter()
             raw_text = await transcriber._transcribe_with_client(client, audio)
             t1 = time_module.perf_counter()
@@ -1939,7 +1734,7 @@ class VoiceDictationServer:
 
             # For short audio (< 2s), just send it all at once (faster)
             if duration < 2.0:
-                logger.info(f"Single request mode ({duration:.1f}s audio)")
+                logger.info(f"Processing {duration:.1f}s audio")
                 t0 = time_module.perf_counter()
                 raw_text = await transcriber._transcribe_with_client(client, audio)
                 t1 = time_module.perf_counter()

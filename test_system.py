@@ -72,12 +72,12 @@ def test_hyprland_bindings():
             ["hyprctl", "binds"],
             capture_output=True, text=True, timeout=5
         )
-        if "oflow-ctl start" in result.stdout:
+        if "oflow-ctl" in result.stdout:
             # Find which key oflow is bound to
             lines = result.stdout.split("\n")
             oflow_key = None
             for i, line in enumerate(lines):
-                if "oflow-ctl start" in line:
+                if "oflow-ctl" in line:
                     # Search backwards for key
                     for j in range(i, max(0, i-10), -1):
                         if "key:" in lines[j]:

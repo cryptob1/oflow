@@ -14,8 +14,7 @@ export interface Settings {
     openaiApiKey?: string;
     groqApiKey?: string;
     provider?: 'openai' | 'groq';  // Groq is ~200x faster
-    shortcut?: string;  // e.g., "Super+I", "Ctrl+Shift+Space"
-    transcriptionMode?: 'single' | 'streaming';  // single = wait until done, streaming = upload during recording
+    shortcut?: string;  // e.g., "Super+D", "Ctrl+Shift+Space"
 }
 
 // Default shortcut (Copilot key on supported keyboards)
