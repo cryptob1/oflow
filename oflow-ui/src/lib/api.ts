@@ -18,8 +18,8 @@ export interface Settings {
     transcriptionMode?: 'single' | 'streaming';  // single = wait until done, streaming = upload during recording
 }
 
-// Default shortcut
-export const DEFAULT_SHORTCUT = "Super+I";
+// Default shortcut (Copilot key on supported keyboards)
+export const DEFAULT_SHORTCUT = "XF86Assistant";
 
 /**
  * Starts recording audio.
@@ -267,9 +267,13 @@ export async function clearHistory(): Promise<void> {
  */
 export async function getShortcut(): Promise<string> {
     try {
-        return await invoke<string>('get_shortcut');
+        console.log("[getShortcut] Invoking get_shortcut...");
+        const result = await invoke<string>('get_shortcut');
+        console.log("[getShortcut] Got result:", result);
+        return result;
     } catch (error) {
-        console.error('Failed to get shortcut:', error);
+        console.error('[getShortcut] Failed:', error);
+        console.log("[getShortcut] Returning DEFAULT_SHORTCUT:", DEFAULT_SHORTCUT);
         return DEFAULT_SHORTCUT;
     }
 }
@@ -281,11 +285,23 @@ export async function getShortcut(): Promise<string> {
 export async function setShortcut(shortcut: string): Promise<void> {
     try {
         console.log('[setShortcut] Setting shortcut to:', shortcut);
-        await invoke('set_shortcut', { shortcut });
+        console.log('[setShortcut] Calling invoke...');
+        const result = await invoke('set_shortcut', { shortcut });
+        console.log('[setShortcut] Result:', result);
         console.log('[setShortcut] Success!');
-    } catch (error) {
-        console.error('[setShortcut] Error:', error);
-        throw new Error(`Failed to set shortcut: ${error}`);
+    } catch (error: unknown) {
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        console.error('[setShortcut] Error type:', typeof error);
+        console.error('[setShortcut] Error:', errorMsg);
+        // Write error to a file we can read
+        try {
+            await writeTextFile('.oflow/shortcut-error.log', `${new Date().toISOString()}: ${errorMsg}`, {
+                baseDir: 22 // Home directory
+            });
+        } catch (e) {
+            console.error('[setShortcut] Could not write error log:', e);
+        }
+        throw new Error(`Failed to set shortcut: ${errorMsg}`);
     }
 }
 
@@ -293,9 +309,18 @@ export async function setShortcut(shortcut: string): Promise<void> {
  * Available shortcut presets.
  */
 export const SHORTCUT_PRESETS = [
-    { value: "Super+I", label: "Super + I (Default)" },
-    { value: "Ctrl+Shift+Space", label: "Ctrl + Shift + Space" },
-    { value: "Alt+Space", label: "Alt + Space" },
-    { value: "F9", label: "F9" },
-    { value: "Ctrl+Shift+R", label: "Ctrl + Shift + R" },
+    { value: "XF86Assistant", label: "Copilot Key (Recommended)", shortLabel: "Copilot Key" },
+    { value: "Super+B", label: "Super + B", shortLabel: "Super+B" },
+    { value: "Super+V", label: "Super + V", shortLabel: "Super+V" },
+    { value: "Super+I", label: "Super + I", shortLabel: "Super+I" },
+    { value: "Ctrl+Shift+Space", label: "Ctrl + Shift + Space", shortLabel: "Ctrl+Shift+Space" },
+    { value: "F9", label: "F9", shortLabel: "F9" },
 ] as const;
+
+/**
+ * Gets a human-readable label for a shortcut value.
+ */
+export function getShortcutLabel(shortcut: string): string {
+    const preset = SHORTCUT_PRESETS.find(p => p.value === shortcut);
+    return preset?.shortLabel ?? shortcut;
+}

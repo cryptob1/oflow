@@ -3,6 +3,7 @@
 // Add "custom/oflow" to your modules-right (or left/center) array, then add this module definition.
 //
 // The module reads from the state file that oflow writes to show recording status.
+// Left-click toggles recording, right-click opens settings UI.
 
 {
     "custom/oflow": {
@@ -10,6 +11,8 @@
         "return-type": "json",
         "interval": 1,
         "format": "{}",
-        "tooltip": true
+        "tooltip": true,
+        "on-click": "python ~/.local/share/oflow/oflow.py toggle 2>/dev/null || python ~/code/oflow/oflow.py toggle",
+        "on-click-right": "oflow-ui 2>/dev/null || cd ~/code/oflow && make dev"
     }
 }

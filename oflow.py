@@ -31,6 +31,7 @@ import socket
 import subprocess
 import sys
 import threading
+import time
 import wave
 from dataclasses import dataclass
 from datetime import datetime
@@ -48,8 +49,9 @@ from langchain_groq import ChatGroq
 
 load_dotenv()
 
+_debug_mode = os.getenv("DEBUG_MODE", "false").lower() == "true"
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.DEBUG if _debug_mode else logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
     datefmt="%H:%M:%S",
 )
@@ -1742,6 +1744,8 @@ class VoiceDictationServer:
         """Finalize streaming mode - wait for pending tasks and process final chunk."""
         import time as time_module
 
+        logger.info("_finalize_streaming started")
+
         settings = load_settings()
         provider = settings.get('provider', 'groq')
         api_key = settings.get('groqApiKey') if provider == 'groq' else settings.get('openaiApiKey')
@@ -1753,7 +1757,13 @@ class VoiceDictationServer:
             self._cleanup_streaming()
             return
 
-        # Get any remaining pending audio
+        # Stop streaming loop first to prevent deadlocks
+        logger.info("Stopping streaming loop...")
+        self._cleanup_streaming()
+        logger.info("Streaming loop stopped")
+
+        # Get any remaining pending audio (no lock needed now that loop is stopped)
+        logger.info("Getting pending audio...")
         with self._streaming_lock:
             final_audio = self._streaming_pending_audio.copy()
             self._streaming_pending_audio = []
@@ -2021,10 +2031,15 @@ class VoiceDictationServer:
                     cmd = conn.recv(1024).decode().strip()
                     logger.debug(f"Command: {cmd}")
 
+                    logger.info(f"Command received: {cmd} (is_recording={self.is_recording})")
                     if cmd == "start" and not self.is_recording:
                         self._start_recording()
                     elif cmd == "stop" and self.is_recording:
+                        logger.info("Calling _stop_recording...")
                         self._stop_recording()
+                        logger.info("_stop_recording completed")
+                    elif cmd == "stop" and not self.is_recording:
+                        logger.info("Stop received but not recording - ignored")
                     elif cmd == "toggle":
                         if self.is_recording:
                             self._stop_recording()

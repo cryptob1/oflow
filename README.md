@@ -2,7 +2,7 @@
 
 **Voice-to-text for Omarchy** — Like [Wispr Flow](https://wisprflow.ai), but open source and local-first.
 
-Hold a key, speak, release — your words appear wherever you're typing.
+Press a key, speak, press again — your words appear wherever you're typing.
 
 ![Settings](docs/settings.png)
 
@@ -10,7 +10,7 @@ Hold a key, speak, release — your words appear wherever you're typing.
 
 - **Instant transcription** — Groq Whisper runs at 200x realtime (~0.5s latency)
 - **Smart cleanup** — Auto-fixes grammar, removes filler words, formats text
-- **Waybar integration** — Status icon shows recording/transcribing state
+- **Waybar integration** — Click status icon to open settings, visual feedback while recording
 - **Audio feedback** — Configurable sounds for start/stop/error
 - **Spoken punctuation** — Say "period" or "new line" to insert symbols
 - **Privacy-first** — All data stored locally, no cloud backend
@@ -26,7 +26,15 @@ Hold a key, speak, release — your words appear wherever you're typing.
 sudo pacman -S wtype
 ```
 
-### Download
+### Quick Install (Arch/Omarchy)
+
+```bash
+git clone https://github.com/CryptoB1/oflow.git
+cd oflow
+make install   # Builds app, installs to ~/.local/bin, sets up Waybar & autostart
+```
+
+### Manual Download
 
 [github.com/CryptoB1/oflow/releases](https://github.com/CryptoB1/oflow/releases)
 
@@ -38,15 +46,15 @@ chmod +x oflow-*.AppImage
 ## Setup
 
 1. Get a free Groq API key: https://console.groq.com/keys
-2. Open oflow → Settings → paste your Groq key
-3. Hold **Copilot key** (or **Super+V**) to record, release to transcribe
+2. Click the `○` icon in Waybar → Settings → paste your Groq key
+3. Press **Super+D** to start recording, press again to stop and transcribe
 
 That's it.
 
 ## How It Works
 
 ```
-Hold Copilot key → Speak → Release → Text appears in active window
+Press Super+D → Speak → Press Super+D → Text appears in active window
 ```
 
 | You say | You get |
@@ -96,23 +104,29 @@ sudo pacman -S webkit2gtk-4.1 base-devel curl wget file openssl appmenu-gtk-modu
 ```bash
 git clone https://github.com/CryptoB1/oflow.git
 cd oflow
-make dev      # Run in development mode
-make build    # Build release AppImage
+make install  # Full install: build, install binary, setup Waybar & autostart
+make dev      # Development mode (hot reload)
 ```
+
+### Make Targets
+
+| Command | Description |
+|---------|-------------|
+| `make install` | Full install: build app, install to ~/.local/bin, configure Waybar, enable autostart |
+| `make build` | Build release binary only |
+| `make dev` | Run in development mode with hot reload |
+| `make run` | Start backend server only |
+| `make stop` | Stop all oflow processes |
+| `make uninstall` | Remove oflow binary, Waybar config, and autostart |
 
 ## Waybar Integration
 
-oflow displays a status icon in Waybar:
-- `○` idle (green)
+oflow displays a clickable status icon in Waybar:
+- `○` idle (green) — click to open settings
 - `●` recording (red)
 - `◐` transcribing (yellow)
 
-Install with:
-```bash
-python oflow.py setup waybar
-```
-
-Or run `./setup.sh` which prompts for Waybar setup.
+The icon is automatically configured during `make install`.
 
 ## Configuration
 
@@ -128,6 +142,11 @@ Settings in `~/.oflow/settings.json`:
 
 ## Troubleshooting
 
+**Run the test script to diagnose issues:**
+```bash
+python3 test_system.py
+```
+
 **Hotkey not working?**
 ```bash
 hyprctl reload
@@ -136,6 +155,11 @@ hyprctl reload
 **Backend issues?**
 ```bash
 rm -f /tmp/oflow.pid /tmp/voice-dictation.sock
+```
+
+**Enable debug logging:**
+```bash
+DEBUG_MODE=true python oflow.py
 ```
 
 ## License

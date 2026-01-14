@@ -15,8 +15,8 @@ use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 #[cfg(not(debug_assertions))]
 use tauri_plugin_shell::ShellExt;
 
-/// Default shortcut key
-const DEFAULT_SHORTCUT: &str = "Super+I";
+/// Default shortcut key (Copilot key on supported keyboards)
+const DEFAULT_SHORTCUT: &str = "XF86Assistant";
 
 /// Settings file path relative to home directory
 const SETTINGS_PATH: &str = ".oflow/settings.json";
@@ -36,7 +36,6 @@ impl Default for AppState {
     }
 }
 
-/// Settings structure matching the JSON file.
 #[derive(serde::Deserialize, serde::Serialize, Default)]
 #[serde(rename_all = "camelCase")]
 struct Settings {
@@ -47,6 +46,12 @@ struct Settings {
     #[serde(default)]
     openai_api_key: Option<String>,
     #[serde(default)]
+    groq_api_key: Option<String>,
+    #[serde(default)]
+    provider: Option<String>,
+    #[serde(default)]
+    transcription_mode: Option<String>,
+    #[serde(default)]
     shortcut: Option<String>,
 }
 
@@ -56,8 +61,19 @@ fn read_settings() -> Settings {
     let settings_path = home.join(SETTINGS_PATH);
 
     if let Ok(contents) = std::fs::read_to_string(&settings_path) {
-        serde_json::from_str(&contents).unwrap_or_default()
+        eprintln!("[oflow] Read settings file: {}", contents);
+        match serde_json::from_str::<Settings>(&contents) {
+            Ok(s) => {
+                eprintln!("[oflow] Parsed shortcut: {:?}", s.shortcut);
+                s
+            }
+            Err(e) => {
+                eprintln!("[oflow] Failed to parse settings: {}", e);
+                Settings::default()
+            }
+        }
     } else {
+        eprintln!("[oflow] Could not read settings file");
         Settings::default()
     }
 }
@@ -116,7 +132,7 @@ async fn stop_recording() -> Result<(), String> {
 /// or an error message if the operation failed.
 #[tauri::command]
 async fn toggle_recording(
-    state: State<'_, Mutex<AppState>>,
+    state: State<'_, Arc<Mutex<AppState>>>,
 ) -> Result<bool, String> {
     let mut app_state = state.lock().await;
 
@@ -142,7 +158,7 @@ async fn toggle_recording(
 /// Note: This returns the local state, not the actual backend state.
 #[tauri::command]
 async fn get_recording_status(
-    state: State<'_, Mutex<AppState>>,
+    state: State<'_, Arc<Mutex<AppState>>>,
 ) -> Result<bool, String> {
     let app_state = state.lock().await;
     Ok(app_state.is_recording)
@@ -151,9 +167,10 @@ async fn get_recording_status(
 /// Gets the current global shortcut.
 #[tauri::command]
 async fn get_shortcut(
-    state: State<'_, Mutex<AppState>>,
+    state: State<'_, Arc<Mutex<AppState>>>,
 ) -> Result<String, String> {
     let app_state = state.lock().await;
+    eprintln!("[oflow] get_shortcut called, returning: {}", app_state.current_shortcut);
     Ok(app_state.current_shortcut.clone())
 }
 
@@ -161,13 +178,13 @@ async fn get_shortcut(
 /// On Wayland/Hyprland, we can't use Tauri global shortcuts, so we update the WM config directly.
 #[tauri::command]
 async fn set_shortcut(
-    state: State<'_, Mutex<AppState>>,
+    state: State<'_, Arc<Mutex<AppState>>>,
     shortcut: String,
 ) -> Result<(), String> {
-    log::info!("set_shortcut called with: {}", shortcut);
+    eprintln!("[oflow] set_shortcut called with: {}", shortcut);
 
-    // Update Hyprland bindings file
     let home = dirs::home_dir().ok_or("Could not find home directory")?;
+    eprintln!("[oflow] home dir: {:?}", home);
     let bindings_file = home.join(".config/hypr/bindings.conf");
 
     if !bindings_file.exists() {
@@ -179,43 +196,32 @@ async fn set_shortcut(
         .map_err(|e| format!("Failed to read bindings file: {}", e))?;
 
     // Remove old oflow bindings
-    let mut new_lines: Vec<&str> = Vec::new();
-    let mut skip_next = false;
-    for line in contents.lines() {
-        if line.contains("# Oflow voice dictation") {
-            skip_next = true;
-            continue;
-        }
-        if skip_next && (line.starts_with("bind") && line.contains("oflow")) {
-            continue;
-        }
-        skip_next = false;
-        new_lines.push(line);
-    }
+    let new_lines: Vec<&str> = contents
+        .lines()
+        .filter(|line| {
+            !line.contains("# Oflow voice dictation") && 
+            !(line.starts_with("bind") && line.contains("oflow.py"))
+        })
+        .collect();
 
-    // Convert shortcut format (e.g., "Super+I" -> "SUPER, I")
-    let hypr_shortcut = shortcut
-        .replace("Super+", "SUPER, ")
-        .replace("Ctrl+", "CTRL ")
-        .replace("Shift+", "SHIFT ")
-        .replace("Alt+", "ALT ");
+    // Convert shortcut format (e.g., "Super+I" -> "SUPER, I", "XF86Assistant" -> ", XF86Assistant")
+    let hypr_shortcut = if shortcut.starts_with("XF86") {
+        // Special keys like XF86Assistant (Copilot key) - no modifier needed
+        format!(", {}", shortcut)
+    } else {
+        shortcut
+            .replace("Super+", "SUPER, ")
+            .replace("Ctrl+", "CTRL ")
+            .replace("Shift+", "SHIFT ")
+            .replace("Alt+", "ALT ")
+    };
 
-    // Get the oflow script path
-    let oflow_dir = std::env::current_dir()
-        .map_err(|e| format!("Failed to get current dir: {}", e))?;
-    let python_path = oflow_dir.join(".venv/bin/python");
-    let script_path = oflow_dir.join("oflow.py");
-
-    // Add new bindings
+    // Add new bindings using oflow-ctl helper script
     let new_bindings = format!(
-        "\n# Oflow voice dictation (push-to-talk: hold {} to record, release to stop)\nbind = {}, exec, {} {} start\nbindr = {}, exec, {} {} stop",
+        "\n# Oflow voice dictation (push-to-talk: hold {} to record, release to stop)\nbind = {}, exec, oflow-ctl start\nbindr = {}, exec, oflow-ctl stop",
         shortcut,
         hypr_shortcut,
-        python_path.display(),
-        script_path.display(),
-        hypr_shortcut,
-        python_path.display(),
-        script_path.display()
+        hypr_shortcut
     );
 
     let mut final_content = new_lines.join("\n");
@@ -226,25 +232,25 @@ async fn set_shortcut(
     final_content.push_str(&new_bindings);
     final_content.push('\n');
 
-    // Write updated bindings
+    eprintln!("[oflow] Writing to: {:?}", bindings_file);
     std::fs::write(&bindings_file, &final_content)
         .map_err(|e| format!("Failed to write bindings file: {}", e))?;
+    eprintln!("[oflow] Write successful");
 
-    // Reload Hyprland
-    let _ = std::process::Command::new("hyprctl")
+    eprintln!("[oflow] Reloading Hyprland");
+    let reload_result = std::process::Command::new("hyprctl")
         .arg("reload")
         .output();
+    eprintln!("[oflow] Hyprctl result: {:?}", reload_result);
 
-    // Update state
     let mut app_state = state.lock().await;
     app_state.current_shortcut = shortcut.clone();
 
-    // Save to settings file
     let mut settings = read_settings();
     settings.shortcut = Some(shortcut.clone());
     write_settings(&settings)?;
 
-    log::info!("Shortcut successfully updated to: {}", shortcut);
+    eprintln!("[oflow] Shortcut successfully updated to: {}", shortcut);
     Ok(())
 }
 
@@ -465,44 +471,32 @@ pub fn run() {
                 }
             });
 
-            // Spawn Python backend as sidecar (only in release mode)
-            // In dev mode, the backend is started by scripts/dev.sh
-            #[cfg(not(debug_assertions))]
-            {
-                let handle = app.handle().clone();
-                tauri::async_runtime::spawn(async move {
-                    match handle
-                        .shell()
-                        .sidecar("oflow-backend")
-                        .map_err(|e| format!("Failed to create sidecar: {}", e))
+            // Start Python backend if not already running
+            let socket_path = std::path::Path::new("/tmp/voice-dictation.sock");
+            if !socket_path.exists() {
+                let oflow_dir = std::env::var("OFLOW_DIR")
+                    .unwrap_or_else(|_| dirs::home_dir()
+                        .map(|h| h.join("code/oflow").to_string_lossy().to_string())
+                        .unwrap_or_default());
+                
+                let python_path = format!("{oflow_dir}/.venv/bin/python");
+                let script_path = format!("{oflow_dir}/oflow.py");
+                
+                if std::path::Path::new(&python_path).exists() && std::path::Path::new(&script_path).exists() {
+                    log::info!("Starting backend from {}", script_path);
+                    match std::process::Command::new(&python_path)
+                        .arg(&script_path)
+                        .spawn()
                     {
-                        Ok(sidecar) => {
-                            match sidecar.spawn() {
-                                Ok((mut rx, _child)) => {
-                                    while let Some(event) = rx.recv().await {
-                                        if let tauri_plugin_shell::process::CommandEvent::Stdout(line) =
-                                            event
-                                        {
-                                            if let Ok(text) = String::from_utf8(line) {
-                                                log::info!("Backend: {}", text);
-                                            }
-                                        }
-                                    }
-                                }
-                                Err(e) => {
-                                    log::error!("Failed to spawn backend: {}", e);
-                                }
-                            }
-                        }
-                        Err(e) => {
-                            log::error!("{}", e);
-                        }
+                        Ok(_) => log::info!("Backend started"),
+                        Err(e) => log::error!("Failed to start backend: {}", e),
                     }
-                });
+                } else {
+                    log::error!("Backend not found at {} or {}", python_path, script_path);
+                }
+            } else {
+                log::info!("Backend already running (socket exists)");
             }
-
-            #[cfg(debug_assertions)]
-            log::info!("Dev mode: backend should be started by scripts/dev.sh");
 
             Ok(())
         })

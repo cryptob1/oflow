@@ -1,9 +1,13 @@
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Activity, Clock, FileText, Zap, Loader2 } from "lucide-react";
-import { getTranscriptStats, getTranscripts, type Transcript } from "@/lib/api";
+import { getTranscriptStats, getTranscripts, getShortcutLabel, type Transcript } from "@/lib/api";
 
-export function Dashboard() {
+interface DashboardProps {
+    shortcut: string;
+}
+
+export function Dashboard({ shortcut }: DashboardProps) {
     const [stats, setStats] = useState({
         totalTranscripts: 0,
         totalWords: 0,
@@ -147,7 +151,7 @@ export function Dashboard() {
                         </div>
                     ) : recentTranscripts.length === 0 ? (
                         <div className="flex items-center justify-center h-[200px] text-muted-foreground">
-                            <p className="text-sm">No transcripts yet. Press Super+I to start recording.</p>
+                            <p className="text-sm">No transcripts yet. Press {getShortcutLabel(shortcut)} to start recording.</p>
                         </div>
                     ) : (
                         <div className="grid gap-3 md:grid-cols-2">

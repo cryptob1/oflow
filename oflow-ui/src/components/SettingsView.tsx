@@ -4,7 +4,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { loadSettings, saveSettings, clearHistory, getShortcut, setShortcut, SHORTCUT_PRESETS, type Settings } from "@/lib/api";
+import { loadSettings, saveSettings, clearHistory, getShortcut, setShortcut, SHORTCUT_PRESETS, DEFAULT_SHORTCUT, type Settings } from "@/lib/api";
 import { Eye, EyeOff, Shield, Keyboard, Zap, Loader2 } from "lucide-react";
 import {
     Select,
@@ -15,7 +15,11 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/components/ui/toast";
 
-export function SettingsView() {
+interface SettingsViewProps {
+    onShortcutChange?: (shortcut: string) => void;
+}
+
+export function SettingsView({ onShortcutChange }: SettingsViewProps) {
     const { showToast } = useToast();
     const [settings, setSettings] = useState<Settings>({
         enableCleanup: true,
@@ -30,7 +34,7 @@ export function SettingsView() {
     const [showGroqKey, setShowGroqKey] = useState(false);
     const [apiKeyInput, setApiKeyInput] = useState("");
     const [groqKeyInput, setGroqKeyInput] = useState("");
-    const [currentShortcut, setCurrentShortcut] = useState("Super+I");
+    const [currentShortcut, setCurrentShortcut] = useState(DEFAULT_SHORTCUT);
     const [shortcutSaving, setShortcutSaving] = useState(false);
 
     useEffect(() => {
@@ -48,6 +52,7 @@ export function SettingsView() {
                 // Load current shortcut
                 const shortcut = await getShortcut();
                 setCurrentShortcut(shortcut);
+                onShortcutChange?.(shortcut);
             } catch (error) {
                 console.error("Failed to load settings:", error);
             } finally {
@@ -55,6 +60,7 @@ export function SettingsView() {
             }
         };
         load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     const handleSettingChange = async (key: keyof Settings, value: boolean) => {
@@ -137,6 +143,7 @@ export function SettingsView() {
         try {
             await setShortcut(shortcut);
             setCurrentShortcut(shortcut);
+            onShortcutChange?.(shortcut);
             const newSettings = { ...settings, shortcut };
             await saveSettings(newSettings);
             showToast(`Shortcut changed to ${shortcut}`, "success");
