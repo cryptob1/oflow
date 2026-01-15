@@ -1,70 +1,71 @@
 # Keyboard Shortcuts for Oflow
 
-Oflow uses a configurable push-to-talk hotkey that works system-wide across all platforms.
+Oflow uses a toggle hotkey configured via Hyprland bindings.
 
 ## Default Shortcut
 
-**Super + I** (hold to record, release to stop)
+**Super + D** (toggle mode: press to start recording, press again to stop and transcribe)
 
-## Configuring the Shortcut
+## How It Works
 
-The keyboard shortcut can be configured directly in the Oflow app:
-
-1. Open Oflow
-2. Go to **Settings**
-3. Find the **Keyboard Shortcut** section
-4. Select your preferred shortcut from the dropdown
-
-### Available Presets
-
-| Shortcut | Description |
-|----------|-------------|
-| Super + I | Default - Uses Windows/Super/Cmd key |
-| Ctrl + Shift + Space | Three-key combination |
-| Alt + Space | Alternative quick access |
-| F9 | Function key (no modifiers) |
-| Ctrl + Shift + R | Alternative three-key combo |
-
-## How Push-to-Talk Works
-
-1. **Press** the shortcut key to start recording
+1. **Press Super+D** to start recording
 2. **Speak** your message
-3. **Release** the key to stop recording and process
+3. **Press Super+D again** to stop recording and transcribe
 
-The transcribed text will be automatically typed at your cursor position.
+The transcribed text will be automatically typed at your cursor position using `wtype`.
 
-## Platform Support
+## Hyprland Configuration
 
-The shortcut system uses Tauri's global-shortcut plugin, which provides consistent behavior across:
-
-- **Linux** (X11 and Wayland, including Hyprland)
-- **macOS** (uses Cmd key for Super)
-- **Windows** (uses Win key for Super)
-
-## Legacy: Hyprland Manual Bindings
-
-If you're on Hyprland and prefer to use window manager bindings instead of the app's built-in shortcut, you can add this to `~/.config/hypr/bindings.conf`:
+The hotkey is configured during `make install`. It adds this to `~/.config/hypr/bindings.conf`:
 
 ```ini
-# Voice Dictation - Press to start, release to stop
-bind = SUPER, I, exec, ~/.venv/bin/python ~/code/oflow/oflow.py start
-bindr = SUPER, I, exec, ~/.venv/bin/python ~/code/oflow/oflow.py stop
+# Oflow voice dictation (toggle: press Super+D to start/stop)
+bind = SUPER, D, exec, ~/.local/bin/oflow-ctl toggle
 ```
 
-**Note:** When using WM bindings, disable the in-app shortcut to avoid conflicts.
+The `oflow-ctl` script sends commands to the backend via Unix socket at `/tmp/voice-dictation.sock`.
+
+## Changing the Hotkey
+
+To use a different key:
+
+1. Edit `~/.config/hypr/bindings.conf`
+2. Change `SUPER, D` to your preferred key (e.g., `SUPER, I` or `CTRL SHIFT, SPACE`)
+3. Reload Hyprland: `hyprctl reload`
+
+### Example: Push-to-Talk Mode
+
+If you prefer hold-to-record instead of toggle:
+
+```ini
+# Push-to-talk: hold to record, release to stop
+bind = SUPER, I, exec, ~/.local/bin/oflow-ctl start
+bindr = SUPER, I, exec, ~/.local/bin/oflow-ctl stop
+```
 
 ## Troubleshooting
 
-### Shortcut not working?
+### Hotkey not working?
 
-1. Make sure Oflow is running (check system tray)
-2. Try a different shortcut in Settings
-3. Check if another app is using the same shortcut
-4. On Linux, some shortcuts may be reserved by the desktop environment
+1. Check if oflow backend is running:
+   ```bash
+   python3 test_system.py
+   ```
 
-### Shortcut conflicts
+2. Reload Hyprland:
+   ```bash
+   hyprctl reload
+   ```
 
-If your chosen shortcut conflicts with another application:
+3. Check if binding is in your config:
+   ```bash
+   grep oflow ~/.config/hypr/bindings.conf
+   ```
 
-1. Change the Oflow shortcut in Settings
-2. Or disable the conflicting shortcut in the other application
+### Backend not responding?
+
+```bash
+# Clean up stale files and restart
+rm -f /tmp/oflow.pid /tmp/voice-dictation.sock
+~/.local/bin/oflow-toggle
+```

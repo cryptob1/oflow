@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Oflow is a voice dictation system for Hyprland/Wayland. It records audio via global hotkey (Super+I), transcribes it using OpenAI Whisper, optionally cleans it with GPT-4o-mini, and types the result into the active window using wtype.
+Oflow is a voice dictation system for Hyprland/Wayland. It records audio via global hotkey (Super+D toggle mode), transcribes it using Groq Whisper (or OpenAI), optionally cleans it with Llama 3.1 (or GPT-4o-mini), and types the result into the active window using wtype.
 
 ## Common Commands
 
@@ -64,7 +64,7 @@ The pipeline is defined in `create_transcription_graph()`:
 ### IPC
 - Unix socket at `/tmp/voice-dictation.sock`
 - Commands: `start`, `stop`, `toggle`
-- Hyprland binds Super+I press/release to start/stop commands
+- Hyprland binds Super+D to toggle command (press to start, press again to stop)
 
 ### Data storage
 - Transcripts: `~/.oflow/transcripts.jsonl`

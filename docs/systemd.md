@@ -2,7 +2,13 @@
 
 This guide explains how to set up Oflow as a systemd user service for automatic startup.
 
-## Installation
+> **Note**: If you installed via `make install`, autostart is already configured using a `.desktop` file in `~/.config/autostart/`. This guide is for those who prefer systemd-based management.
+
+## Recommended: Use Autostart (Default)
+
+The `make install` command creates `~/.config/autostart/oflow.desktop` which starts oflow on login. This is simpler and works well for most users.
+
+## Alternative: Systemd Service
 
 ### 1. Create the service file
 
@@ -10,42 +16,32 @@ Create `~/.config/systemd/user/oflow.service`:
 
 ```ini
 [Unit]
-Description=Oflow Voice Dictation Server
+Description=Oflow Voice Dictation
 Documentation=https://github.com/CryptoB1/oflow
-After=graphical-session.target pulseaudio.service pipewire.service
+After=graphical-session.target pipewire.service
 Wants=graphical-session.target
 
 [Service]
 Type=simple
-ExecStart=/path/to/oflow/.venv/bin/python /path/to/oflow/oflow.py
+ExecStart=%h/.local/bin/oflow
 Restart=on-failure
 RestartSec=5
-Environment=PATH=/usr/bin:/usr/local/bin
-WorkingDirectory=/path/to/oflow
+Environment=PATH=%h/.local/bin:/usr/bin:/usr/local/bin
 
 # Resource limits
 MemoryMax=512M
 CPUQuota=50%
 
-# Security hardening
-NoNewPrivileges=yes
-ProtectSystem=strict
-ProtectHome=read-only
-PrivateTmp=yes
-ReadWritePaths=/tmp
-
 [Install]
 WantedBy=default.target
 ```
 
-### 2. Customize the paths
+### 2. Disable the desktop autostart
 
-Replace `/path/to/oflow` with the actual installation path:
+To avoid running two instances:
 
 ```bash
-# Example: If installed in ~/code/oflow
-sed -i 's|/path/to/oflow|/home/yourusername/code/oflow|g' \
-    ~/.config/systemd/user/oflow.service
+rm ~/.config/autostart/oflow.desktop
 ```
 
 ### 3. Enable and start the service
@@ -89,11 +85,9 @@ systemctl --user disable oflow.service
    journalctl --user -u oflow.service -n 50
    ```
 
-2. Verify Python environment:
+2. Verify binary exists:
    ```bash
-   # Ensure the venv is activated in the service
-   # Or use absolute path to Python
-   ExecStart=/path/to/oflow/.venv/bin/python /path/to/oflow/oflow.py
+   ls -la ~/.local/bin/oflow
    ```
 
 3. Check audio permissions:
@@ -110,74 +104,30 @@ If you see "Permission denied" on the socket:
 # Check socket file permissions
 ls -la /tmp/voice-dictation.sock
 
-# The service creates it with 0o666, but verify
+# The backend creates it with 0o666, but verify
 ```
 
 ### Audio device not found
 
-Ensure PulseAudio/PipeWire is running before the service:
+Ensure PipeWire (or PulseAudio) is running before the service:
 
 ```bash
 # Check audio server
 pactl info
 
 # Restart audio if needed
-systemctl --user restart pulseaudio.service
-# or
 systemctl --user restart pipewire.service
+# or
+systemctl --user restart pulseaudio.service
 ```
 
 ## Environment Variables
 
-You can add environment variables to the service:
+API keys are stored in `~/.oflow/settings.json` (configured via the Settings UI). You don't need environment variables for normal operation.
+
+For debugging, you can add:
 
 ```ini
 [Service]
-Environment=OPENAI_API_KEY=sk-your-key
-Environment=USE_OPENAI_DIRECT=true
 Environment=DEBUG_MODE=true
-```
-
-Or use an environment file:
-
-```ini
-[Service]
-EnvironmentFile=/path/to/oflow/.env
-```
-
-## Alternative: Socket Activation
-
-For on-demand startup (saves resources when not in use):
-
-Create `~/.config/systemd/user/oflow.socket`:
-
-```ini
-[Unit]
-Description=Oflow Socket
-
-[Socket]
-ListenStream=/tmp/voice-dictation.sock
-SocketMode=0666
-
-[Install]
-WantedBy=sockets.target
-```
-
-Then modify the service to be socket-activated:
-
-```ini
-[Unit]
-Description=Oflow Voice Dictation Server
-Requires=oflow.socket
-
-[Service]
-Type=simple
-ExecStart=/path/to/oflow/.venv/bin/python /path/to/oflow/oflow.py
-StandardInput=socket
-```
-
-Enable with:
-```bash
-systemctl --user enable oflow.socket
-systemctl --user start oflow.socket
 ```

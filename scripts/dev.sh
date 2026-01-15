@@ -10,14 +10,17 @@ BINDINGS_FILE="$HOME/.config/hypr/bindings.conf"
 if [ -f "$BINDINGS_FILE" ]; then
     if ! grep -q "oflow" "$BINDINGS_FILE"; then
         echo "Setting up Hyprland keybindings..."
+        # Install oflow-ctl if not present
+        if [ ! -f "$HOME/.local/bin/oflow-ctl" ]; then
+            make -C "$SCRIPT_DIR" install-oflow-ctl
+        fi
         cat >> "$BINDINGS_FILE" << EOF
 
-# Oflow voice dictation (push-to-talk: hold Super+I to record, release to stop)
-bind = SUPER, I, exec, $SCRIPT_DIR/.venv/bin/python $SCRIPT_DIR/oflow.py start
-bindr = SUPER, I, exec, $SCRIPT_DIR/.venv/bin/python $SCRIPT_DIR/oflow.py stop
+# Oflow voice dictation (toggle: press Super+D to start/stop)
+bind = SUPER, D, exec, ~/.local/bin/oflow-ctl toggle
 EOF
         hyprctl reload 2>/dev/null || true
-        echo "Keybindings configured: Super+I"
+        echo "Keybindings configured: Super+D (toggle mode)"
     fi
 fi
 
