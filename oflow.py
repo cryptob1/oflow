@@ -1506,7 +1506,7 @@ class VoiceDictationServer:
         self.waybar_state.idle()
 
         subprocess.run(
-            ["pactl", "set-source-volume", "@DEFAULT_SOURCE@", "150%"],
+            ["pactl", "set-source-volume", "@DEFAULT_SOURCE@", "100%"],
             stderr=subprocess.DEVNULL,
         )
 
