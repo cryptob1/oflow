@@ -4,15 +4,8 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { loadSettings, saveSettings, clearHistory, getShortcut, setShortcut, SHORTCUT_PRESETS, DEFAULT_SHORTCUT, type Settings } from "@/lib/api";
-import { Eye, EyeOff, Shield, Keyboard, Zap, Loader2 } from "lucide-react";
-import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from "@/components/ui/select";
+import { loadSettings, saveSettings, clearHistory, type Settings } from "@/lib/api";
+import { Eye, EyeOff, Shield, Zap } from "lucide-react";
 import { useToast } from "@/components/ui/toast";
 
 interface SettingsViewProps {
@@ -33,8 +26,6 @@ export function SettingsView({ onShortcutChange }: SettingsViewProps) {
     const [showGroqKey, setShowGroqKey] = useState(false);
     const [apiKeyInput, setApiKeyInput] = useState("");
     const [groqKeyInput, setGroqKeyInput] = useState("");
-    const [currentShortcut, setCurrentShortcut] = useState(DEFAULT_SHORTCUT);
-    const [shortcutSaving, setShortcutSaving] = useState(false);
 
     useEffect(() => {
         const load = async () => {
@@ -48,10 +39,6 @@ export function SettingsView({ onShortcutChange }: SettingsViewProps) {
                 if (loadedSettings.groqApiKey) {
                     setGroqKeyInput(loadedSettings.groqApiKey);
                 }
-                // Load current shortcut
-                const shortcut = await getShortcut();
-                setCurrentShortcut(shortcut);
-                onShortcutChange?.(shortcut);
             } catch (error) {
                 console.error("Failed to load settings:", error);
             } finally {
@@ -59,7 +46,6 @@ export function SettingsView({ onShortcutChange }: SettingsViewProps) {
             }
         };
         load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     const handleSettingChange = async (key: keyof Settings, value: boolean) => {
@@ -134,23 +120,6 @@ export function SettingsView({ onShortcutChange }: SettingsViewProps) {
         } catch (error) {
             console.error("Failed to save provider:", error);
             showToast("Failed to change provider", "error");
-        }
-    };
-
-    const handleShortcutChange = async (shortcut: string) => {
-        setShortcutSaving(true);
-        try {
-            await setShortcut(shortcut);
-            setCurrentShortcut(shortcut);
-            onShortcutChange?.(shortcut);
-            const newSettings = { ...settings, shortcut };
-            await saveSettings(newSettings);
-            showToast(`Shortcut changed to ${shortcut}`, "success");
-        } catch (error) {
-            console.error("Failed to set shortcut:", error);
-            showToast("Failed to change shortcut", "error");
-        } finally {
-            setShortcutSaving(false);
         }
     };
 
@@ -279,47 +248,6 @@ export function SettingsView({ onShortcutChange }: SettingsViewProps) {
 
                 <Card>
                     <CardHeader>
-                        <CardTitle className="flex items-center gap-2">
-                            <Keyboard className="h-5 w-5" />
-                            Keyboard Shortcut
-                        </CardTitle>
-                        <CardDescription>Push-to-talk hotkey for voice recording.</CardDescription>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                        <div className="space-y-2">
-                            <Label>Global Hotkey</Label>
-                            <Select
-                                value={currentShortcut}
-                                onValueChange={handleShortcutChange}
-                                disabled={isLoading || shortcutSaving}
-                            >
-                                <SelectTrigger className="w-full">
-                                    {shortcutSaving ? (
-                                        <div className="flex items-center gap-2">
-                                            <Loader2 className="h-4 w-4 animate-spin" />
-                                            Updating...
-                                        </div>
-                                    ) : (
-                                        <SelectValue placeholder="Select a shortcut" />
-                                    )}
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {SHORTCUT_PRESETS.map((preset) => (
-                                        <SelectItem key={preset.value} value={preset.value}>
-                                            {preset.label}
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                        </div>
-                        <p className="text-xs text-muted-foreground">
-                            Hold the key to record, release to stop and transcribe.
-                        </p>
-                    </CardContent>
-                </Card>
-
-                <Card>
-                    <CardHeader>
                         <CardTitle>Pipeline Configuration</CardTitle>
                         <CardDescription>Control how your audio is processed.</CardDescription>
                     </CardHeader>
@@ -327,25 +255,13 @@ export function SettingsView({ onShortcutChange }: SettingsViewProps) {
 
                         <div className="flex items-center justify-between space-x-2">
                             <div className="space-y-1">
-                                <Label htmlFor="cleanup">AI Cleanup (GPT-4o-mini)</Label>
+                                <Label htmlFor="cleanup">AI Cleanup</Label>
                                 <p className="text-sm text-muted-foreground">Automatically fix grammar and punctuation.</p>
                             </div>
                             <Switch
                                 id="cleanup"
                                 checked={settings.enableCleanup}
                                 onCheckedChange={(checked) => handleSettingChange("enableCleanup", checked)}
-                                disabled={isLoading}
-                            />
-                        </div>
-                        <div className="flex items-center justify-between space-x-2">
-                            <div className="space-y-1">
-                                <Label htmlFor="memory">Memory System</Label>
-                                <p className="text-sm text-muted-foreground">Learn from your past corrections over time.</p>
-                            </div>
-                            <Switch
-                                id="memory"
-                                checked={settings.enableMemory}
-                                onCheckedChange={(checked) => handleSettingChange("enableMemory", checked)}
                                 disabled={isLoading}
                             />
                         </div>
@@ -372,6 +288,15 @@ export function SettingsView({ onShortcutChange }: SettingsViewProps) {
                             <div className="p-2 bg-muted rounded-md text-sm font-mono">
                                 ~/.oflow/transcripts.jsonl
                             </div>
+                        </div>
+                        <div className="space-y-1">
+                            <Label>Hotkey</Label>
+                            <div className="p-2 bg-muted rounded-md text-sm font-mono">
+                                Super+D (toggle mode)
+                            </div>
+                            <p className="text-xs text-muted-foreground">
+                                Configured via Hyprland. Edit ~/.config/hypr/bindings.conf to change.
+                            </p>
                         </div>
                         <div className="pt-2">
                             <Button

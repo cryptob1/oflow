@@ -17,7 +17,6 @@ make stop
 
 # Run tests
 make test
-python tests/test_robustness.py
 
 # Format code
 make format
@@ -36,30 +35,23 @@ pytest --cov=oflow tests/
 
 ## Architecture
 
-The system uses a LangGraph pipeline (Sandwich Architecture):
+Simple pipeline (no LangGraph):
 
 ```
-Audio Recording → Audio Validation → Whisper STT → GPT-4o-mini Cleanup → Storage → wtype Output
+Audio Recording → Audio Validation → Whisper STT → LLM Cleanup → wtype Output
 ```
 
 ### Single-file structure
 All core logic is in `oflow.py`:
 - `AudioValidator` - validates audio before API calls (duration, amplitude checks)
-- `AudioProcessor` - normalizes audio and converts to base64 WAV
-- `WhisperAPI` - OpenAI Whisper transcription client
-- `TextCleanupAgent` - GPT-4o-mini text cleanup (optional, controlled by ENABLE_CLEANUP)
-- `StorageManager` - JSONL transcript storage and memory persistence
-- `MemoryBuilder` - learns user patterns from transcript history (optional, controlled by ENABLE_MEMORY)
+- `AudioProcessor` - normalizes audio and converts to WAV bytes
+- `transcribe_audio()` - Whisper API call (Groq or OpenAI)
+- `cleanup_text()` - LLM cleanup (Llama 3.1 or GPT-4o-mini)
+- `StorageManager` - JSONL transcript storage
 - `VoiceDictationServer` - Unix socket server receiving start/stop/toggle commands
 - `WaybarState` - writes state to `$XDG_RUNTIME_DIR/oflow/state` for Waybar integration
-- `AudioFeedback` - generates audio cues for recording start/stop/error (configurable themes)
-- `TextProcessor` - spoken punctuation and word replacements (applied before LLM cleanup)
-
-### LangGraph nodes
-The pipeline is defined in `create_transcription_graph()`:
-1. `node_whisper` - transcribes audio
-2. `node_cleanup` - cleans up text (if ENABLE_CLEANUP=true)
-3. `node_storage` - saves transcript, triggers memory building
+- `AudioFeedback` - generates audio cues for recording start/stop/error
+- `TextProcessor` - spoken punctuation and word replacements
 
 ### IPC
 - Unix socket at `/tmp/voice-dictation.sock`
@@ -68,30 +60,30 @@ The pipeline is defined in `create_transcription_graph()`:
 
 ### Data storage
 - Transcripts: `~/.oflow/transcripts.jsonl`
-- Memories: `~/.oflow/memories.json`
 - Settings: `~/.oflow/settings.json`
 - Waybar state: `$XDG_RUNTIME_DIR/oflow/state` (JSON for Waybar custom module)
 
 ## Configuration
 
 Environment variables in `.env`:
-- `OPENAI_API_KEY` - required
+- `GROQ_API_KEY` - Groq API key (recommended)
+- `OPENAI_API_KEY` - OpenAI API key (fallback)
 - `DEBUG_MODE` - enable verbose logging
-- `ENABLE_CLEANUP` - enable GPT-4o-mini text cleanup (default: true)
-- `ENABLE_MEMORY` - enable learning from transcript history (default: false)
 
-### Settings JSON (new features)
+### Settings JSON
 
 Settings in `~/.oflow/settings.json`:
 ```json
 {
-  "audioFeedbackTheme": "default",   // "default", "subtle", "mechanical", "silent"
-  "audioFeedbackVolume": 0.3,        // 0.0 to 1.0
-  "iconTheme": "minimal",            // "emoji", "nerd-font", "minimal", "text"
-  "enableSpokenPunctuation": false,  // Say "period" to get "."
-  "wordReplacements": {              // Custom word corrections
-    "oflow": "oflow",
-    "hyprland": "Hyprland"
+  "provider": "groq",
+  "groqApiKey": "gsk_...",
+  "enableCleanup": true,
+  "audioFeedbackTheme": "default",
+  "audioFeedbackVolume": 0.3,
+  "iconTheme": "minimal",
+  "enableSpokenPunctuation": false,
+  "wordReplacements": {
+    "oflow": "oflow"
   }
 }
 ```
@@ -107,15 +99,9 @@ Add to your Waybar config (`~/.config/waybar/config`):
     "return-type": "json",
     "interval": 1,
     "format": "{}",
-    "tooltip": true
+    "tooltip": true,
+    "on-click": "~/.local/bin/oflow-toggle"
 }
-```
-
-Add to your Waybar CSS (`~/.config/waybar/style.css`):
-```css
-#custom-oflow.idle { color: #50fa7b; }
-#custom-oflow.recording { color: #ff5555; }
-#custom-oflow.transcribing { color: #f1fa8c; }
 ```
 
 ### Spoken Punctuation
@@ -131,11 +117,6 @@ When `enableSpokenPunctuation` is true, say these words to insert symbols:
 
 - Sample rate: 16kHz (Whisper requirement)
 - Channels: mono
-- Min duration: 0.3s
-- Min amplitude: 0.01 (speech detection threshold)
+- Min duration: 0.5s
+- Min amplitude: 0.02 (speech detection threshold)
 - Normalization target: 0.95
-
-## Release TODO
-
-- [ ] Publish AUR package for easy installation on Arch Linux
-- [ ] Add systemd user service for auto-start

@@ -1,7 +1,7 @@
 [project]
 name = "oflow"
-version = "0.2.0"
-description = "Robust voice dictation for Hyprland/Wayland built with LangChain architecture"
+version = "0.3.0"
+description = "Voice dictation for Hyprland/Wayland with Groq Whisper"
 readme = "README.md"
 license = { file = "LICENSE" }
 authors = [
@@ -10,27 +10,25 @@ authors = [
 maintainers = [
     { name = "CryptoB1", email = "cryptob1@users.noreply.github.com" }
 ]
-keywords = ["voice", "dictation", "hyprland", "wayland", "stt", "speech-to-text", "langchain"]
+keywords = ["voice", "dictation", "hyprland", "wayland", "stt", "speech-to-text", "groq", "whisper"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: End Users/Desktop",
     "License :: OSI Approved :: MIT License",
     "Operating System :: POSIX :: Linux",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Topic :: Multimedia :: Sound/Audio :: Speech",
     "Topic :: Text Processing",
 ]
-requires-python = ">=3.13"
+requires-python = ">=3.11"
 dependencies = [
     "sounddevice>=0.4.6",
     "numpy>=1.24.0",
     "httpx>=0.27.0",
     "python-dotenv>=1.0.0",
-    "langchain-core>=0.3.0",
-    "langchain-openai>=0.1.0",
-    "langchain-groq>=0.2.0",
-    "langgraph>=0.0.1",
 ]
 
 [project.optional-dependencies]
@@ -38,7 +36,6 @@ dev = [
     "pytest>=8.0.0",
     "pytest-cov>=4.0.0",
     "ruff>=0.7.0",
-    "pyinstaller>=6.3.0",
 ]
 
 [project.urls]
@@ -46,7 +43,6 @@ Homepage = "https://github.com/CryptoB1/oflow"
 Repository = "https://github.com/CryptoB1/oflow"
 Issues = "https://github.com/CryptoB1/oflow/issues"
 Discussions = "https://github.com/CryptoB1/oflow/discussions"
-Changelog = "https://github.com/CryptoB1/oflow/blob/master/CHANGELOG.md"
 
 [project.scripts]
 oflow = "oflow:main"
@@ -65,9 +61,6 @@ only-include = [
     "docs",
     "README.md",
     "LICENSE",
-    "CHANGELOG.md",
-    "CONTRIBUTING.md",
-    "CODE_OF_CONDUCT.md",
     ".env.example",
     "setup.sh",
     "Makefile",
@@ -83,12 +76,11 @@ markers = [
     "integration: Integration tests (require API keys)",
     "slow: Slow tests (real API calls)",
 ]
-# Default: run only unit tests (fast, no API needed)
 addopts = "-m unit -v"
 
 [tool.ruff]
 line-length = 100
-target-version = "py313"
+target-version = "py311"
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "C4", "UP"]

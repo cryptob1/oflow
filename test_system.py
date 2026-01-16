@@ -5,6 +5,9 @@ import socket
 import subprocess
 import sys
 import time
+from pathlib import Path
+
+SCRIPT_DIR = Path(__file__).parent.resolve()
 
 def test_backend_running():
     """Check if backend process is running."""
@@ -104,8 +107,8 @@ def test_settings_file():
         import json
         with open(settings_path) as f:
             settings = json.load(f)
-        shortcut = settings.get("shortcut", "not set")
-        print(f"✓ Settings file valid (shortcut: {shortcut})")
+        provider = settings.get("provider", "not set")
+        print(f"✓ Settings file valid (provider: {provider})")
         return True
     except Exception as e:
         print(f"✗ Settings file invalid: {e}")
@@ -127,10 +130,10 @@ def test_ui_running():
 def start_backend():
     """Try to start the backend."""
     print("\nAttempting to start backend...")
-    os.chdir("/home/vish/code/oflow")
+    os.chdir(SCRIPT_DIR)
 
     # Activate venv and start
-    cmd = "source .venv/bin/activate && python oflow.py > /tmp/oflow-test.log 2>&1 &"
+    cmd = f"source {SCRIPT_DIR}/.venv/bin/activate && python oflow.py > /tmp/oflow-test.log 2>&1 &"
     subprocess.run(cmd, shell=True, executable="/bin/bash")
     time.sleep(3)
 
@@ -176,11 +179,11 @@ def main():
 
     if not results["backend"]:
         print("\n⚠ Backend not running. Start with:")
-        print("  cd /home/vish/code/oflow && source .venv/bin/activate && python oflow.py &")
+        print(f"  cd {SCRIPT_DIR} && source .venv/bin/activate && python oflow.py &")
 
     if not results["socket_responsive"] and results["backend"]:
         print("\n⚠ Backend running but socket unresponsive (frozen). Restart with:")
-        print("  pkill -9 -f oflow.py && cd /home/vish/code/oflow && source .venv/bin/activate && python oflow.py &")
+        print(f"  pkill -9 -f oflow.py && cd {SCRIPT_DIR} && source .venv/bin/activate && python oflow.py &")
 
     print("=" * 50)
     return 0 if passed == total else 1
