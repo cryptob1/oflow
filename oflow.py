@@ -541,24 +541,48 @@ class StorageManager:
 
 # Common Whisper hallucinations to filter out
 HALLUCINATION_PATTERNS = [
+    # YouTube-style hallucinations
     "thank you", "thanks for watching", "subscribe", "like and subscribe",
     "see you next time", "bye", "goodbye", "thanks for listening",
     "please subscribe", "don't forget to", "hit the bell", "leave a comment",
     "check out", "follow me", "peace", "take care", "have a great",
     "i'll see you", "catch you", "until next time", "stay tuned",
+    # AI assistant responses (when Whisper acts like a chatbot)
+    "i'm sorry", "i cannot", "i can't", "as an ai", "i don't have",
+    "i'm not able", "i'm unable", "how can i help", "how may i assist",
+    "is there anything", "let me know if", "feel free to ask",
+]
+
+# Patterns that indicate Whisper is answering instead of transcribing
+AI_RESPONSE_STARTS = [
+    "i think you", "i believe you", "i would suggest", "i can help",
+    "sure,", "certainly!", "of course!", "absolutely!",
+    "yes, i", "no, i", "well, i think",
+    "the answer is", "the solution is", "here's how", "here is how",
 ]
 
 
 def is_hallucination(text: str) -> bool:
-    """Check if text is likely a Whisper hallucination."""
+    """Check if text is likely a Whisper hallucination or AI response."""
     if not text:
         return False
     text_lower = text.lower().strip()
+
+    # Check for common hallucination patterns
     for pattern in HALLUCINATION_PATTERNS:
         if pattern in text_lower:
             return True
+
+    # Very short text that's just punctuation
     if len(text) < 3 or text in [".", "..", "...", "!", "?", ","]:
         return True
+
+    # Detect AI-style responses (Whisper answering instead of transcribing)
+    for start in AI_RESPONSE_STARTS:
+        if text_lower.startswith(start):
+            logger.debug(f"Filtered AI response: {text[:50]}...")
+            return True
+
     return False
 
 
@@ -592,6 +616,8 @@ async def transcribe_audio(client: httpx.AsyncClient, audio: np.ndarray,
                 "model": model,
                 "response_format": "json",
                 "language": "en",
+                # Prompt helps guide Whisper to just transcribe, not respond
+                "prompt": "Transcribe exactly what is spoken. Do not answer questions or add commentary.",
             },
         )
         if response.status_code == 200:
