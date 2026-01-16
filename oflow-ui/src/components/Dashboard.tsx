@@ -1,18 +1,13 @@
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Activity, Clock, FileText, Zap, Loader2 } from "lucide-react";
-import { getTranscriptStats, getTranscripts, getShortcutLabel, type Transcript } from "@/lib/api";
+import { Activity, Clock, FileText, Loader2 } from "lucide-react";
+import { getTranscriptStats, getTranscripts, type Transcript } from "@/lib/api";
 
-interface DashboardProps {
-    shortcut: string;
-}
-
-export function Dashboard({ shortcut }: DashboardProps) {
+export function Dashboard() {
     const [stats, setStats] = useState({
         totalTranscripts: 0,
         totalWords: 0,
         estimatedTimeSaved: 0,
-        cleanupQuality: 0
     });
     const [recentTranscripts, setRecentTranscripts] = useState<Transcript[]>([]);
     const [isLoading, setIsLoading] = useState(true);
@@ -26,7 +21,7 @@ export function Dashboard({ shortcut }: DashboardProps) {
                     getTranscripts()
                 ]);
                 setStats(statsData);
-                setRecentTranscripts(transcripts.slice(0, 5)); // Get 5 most recent
+                setRecentTranscripts(transcripts.slice(0, 5));
             } catch (error) {
                 console.error("Failed to load dashboard data:", error);
             } finally {
@@ -73,7 +68,7 @@ export function Dashboard({ shortcut }: DashboardProps) {
                 <p className="text-muted-foreground">Overview of your voice transcription activity.</p>
             </div>
 
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+            <div className="grid gap-4 md:grid-cols-3">
                 <Card>
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                         <CardTitle className="text-sm font-medium">Total Transcripts</CardTitle>
@@ -108,7 +103,7 @@ export function Dashboard({ shortcut }: DashboardProps) {
                 </Card>
                 <Card>
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">Saved Time</CardTitle>
+                        <CardTitle className="text-sm font-medium">Time Saved</CardTitle>
                         <Clock className="h-4 w-4 text-muted-foreground" />
                     </CardHeader>
                     <CardContent>
@@ -118,22 +113,6 @@ export function Dashboard({ shortcut }: DashboardProps) {
                             <>
                                 <div className="text-2xl font-bold">{formatTime(stats.estimatedTimeSaved)}</div>
                                 <p className="text-xs text-muted-foreground">vs typing manually</p>
-                            </>
-                        )}
-                    </CardContent>
-                </Card>
-                <Card>
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">Cleanup Quality</CardTitle>
-                        <Zap className="h-4 w-4 text-muted-foreground" />
-                    </CardHeader>
-                    <CardContent>
-                        {isLoading ? (
-                            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-                        ) : (
-                            <>
-                                <div className="text-2xl font-bold">{stats.cleanupQuality.toFixed(1)}%</div>
-                                <p className="text-xs text-muted-foreground">GPT-4o-mini optimization</p>
                             </>
                         )}
                     </CardContent>
@@ -151,7 +130,7 @@ export function Dashboard({ shortcut }: DashboardProps) {
                         </div>
                     ) : recentTranscripts.length === 0 ? (
                         <div className="flex items-center justify-center h-[200px] text-muted-foreground">
-                            <p className="text-sm">No transcripts yet. Press {getShortcutLabel(shortcut)} to start recording.</p>
+                            <p className="text-sm">No transcripts yet. Press Super+D to start recording.</p>
                         </div>
                     ) : (
                         <div className="grid gap-3 md:grid-cols-2">

@@ -8,20 +8,15 @@ import { loadSettings, saveSettings, clearHistory, type Settings } from "@/lib/a
 import { Eye, EyeOff, Shield, Zap } from "lucide-react";
 import { useToast } from "@/components/ui/toast";
 
-interface SettingsViewProps {
-    onShortcutChange?: (shortcut: string) => void;
-}
-
-export function SettingsView({ onShortcutChange }: SettingsViewProps) {
+export function SettingsView() {
     const { showToast } = useToast();
     const [settings, setSettings] = useState<Settings>({
         enableCleanup: true,
-        enableMemory: false,
         provider: 'groq'
     });
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
-    const [clearStatus, setClearStatus] = useState<"idle" | "clearing" | "cleared" | "error">("idle");
+    const [clearStatus, setClearStatus] = useState<"idle" | "clearing">("idle");
     const [showApiKey, setShowApiKey] = useState(false);
     const [showGroqKey, setShowGroqKey] = useState(false);
     const [apiKeyInput, setApiKeyInput] = useState("");
@@ -252,7 +247,6 @@ export function SettingsView({ onShortcutChange }: SettingsViewProps) {
                         <CardDescription>Control how your audio is processed.</CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-6">
-
                         <div className="flex items-center justify-between space-x-2">
                             <div className="space-y-1">
                                 <Label htmlFor="cleanup">AI Cleanup</Label>

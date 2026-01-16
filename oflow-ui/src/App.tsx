@@ -6,29 +6,14 @@ import { ToastProvider } from "@/components/ui/toast";
 import { Dashboard } from "@/components/Dashboard";
 import { HistoryView } from "@/components/HistoryView";
 import { SettingsView } from "@/components/SettingsView";
-import { showWindow, getShortcut, getShortcutLabel, DEFAULT_SHORTCUT } from "@/lib/api";
+import { showWindow } from "@/lib/api";
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<"dashboard" | "history" | "settings">("dashboard");
-  const [currentShortcut, setCurrentShortcut] = useState(DEFAULT_SHORTCUT);
 
-  // Show window on mount and load shortcut
+  // Show window on mount
   useEffect(() => {
-    const setupApp = async () => {
-      try {
-        // Try to show window (will fail silently if not in Tauri)
-        await showWindow().catch(() => {});
-
-        // Load the current shortcut from backend
-        const shortcut = await getShortcut();
-        console.log("[App] Loaded shortcut from backend:", shortcut);
-        setCurrentShortcut(shortcut);
-      } catch (e) {
-        console.error("[App] Failed to load shortcut:", e);
-      }
-    };
-
-    setupApp();
+    showWindow().catch(() => {});
   }, []);
 
   return (
@@ -68,15 +53,15 @@ export default function App() {
           </nav>
 
           <div className="mt-auto text-xs text-muted-foreground text-center">
-            <p>Press <kbd className="px-1.5 py-0.5 bg-muted rounded text-[10px]">{getShortcutLabel(currentShortcut)}</kbd> to record</p>
+            <p>Press <kbd className="px-1.5 py-0.5 bg-muted rounded text-[10px]">Super+D</kbd> to record</p>
           </div>
         </div>
 
         {/* Main Content */}
         <main className="flex-1 overflow-auto bg-muted/10 p-8">
-          {activeTab === "dashboard" && <Dashboard shortcut={currentShortcut} />}
+          {activeTab === "dashboard" && <Dashboard />}
           {activeTab === "history" && <HistoryView />}
-          {activeTab === "settings" && <SettingsView onShortcutChange={setCurrentShortcut} />}
+          {activeTab === "settings" && <SettingsView />}
         </main>
       </div>
     </ToastProvider>
