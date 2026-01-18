@@ -112,10 +112,10 @@ def ensure_data_dir() -> None:
     # Create default settings file if it doesn't exist
     if not SETTINGS_FILE.exists():
         default_settings = {
-            'enableCleanup': DEFAULT_ENABLE_CLEANUP,
-            'provider': DEFAULT_PROVIDER,
+            "enableCleanup": DEFAULT_ENABLE_CLEANUP,
+            "provider": DEFAULT_PROVIDER,
         }
-        with open(SETTINGS_FILE, 'w') as f:
+        with open(SETTINGS_FILE, "w") as f:
             json.dump(default_settings, f, indent=2)
 
     # Create empty transcripts file if it doesn't exist
@@ -134,36 +134,62 @@ def load_settings() -> dict:
         if SETTINGS_FILE.exists():
             with open(SETTINGS_FILE) as f:
                 settings = json.load(f)
+
+                # Validate and sanitize API keys
+                groq_key = settings.get("groqApiKey") or GROQ_API_KEY
+                openai_key = settings.get("openaiApiKey") or OPENAI_API_KEY
+
+                # Check for duplicated API keys (common copy-paste error)
+                if groq_key and len(groq_key) > 60:
+                    logger.warning(
+                        f"⚠️  Groq API key looks duplicated (length: {len(groq_key)}). "
+                        "Expected ~56 chars. Please check your settings."
+                    )
+                    # Try to fix by taking first half if it looks like a duplicate
+                    if len(groq_key) == 112 and groq_key[:56] == groq_key[56:]:
+                        logger.info("Auto-fixing duplicated API key...")
+                        groq_key = groq_key[:56]
+
+                if openai_key and len(openai_key) > 100:
+                    logger.warning(
+                        f"⚠️  OpenAI API key looks duplicated (length: {len(openai_key)}). "
+                        "Please check your settings."
+                    )
+
                 return {
-                    'enableCleanup': settings.get('enableCleanup', DEFAULT_ENABLE_CLEANUP),
-                    'openaiApiKey': settings.get('openaiApiKey') or OPENAI_API_KEY,
-                    'groqApiKey': settings.get('groqApiKey') or GROQ_API_KEY,
-                    'provider': settings.get('provider', DEFAULT_PROVIDER),
-                    'audioFeedbackTheme': settings.get('audioFeedbackTheme', 'default'),
-                    'audioFeedbackVolume': settings.get('audioFeedbackVolume', 0.3),
-                    'iconTheme': settings.get('iconTheme', 'minimal'),
-                    'enableSpokenPunctuation': settings.get('enableSpokenPunctuation', False),
-                    'wordReplacements': settings.get('wordReplacements', {}),
+                    "enableCleanup": settings.get("enableCleanup", DEFAULT_ENABLE_CLEANUP),
+                    "openaiApiKey": openai_key,
+                    "groqApiKey": groq_key,
+                    "provider": settings.get("provider", DEFAULT_PROVIDER),
+                    "audioFeedbackTheme": settings.get("audioFeedbackTheme", "default"),
+                    "audioFeedbackVolume": settings.get("audioFeedbackVolume", 0.3),
+                    "iconTheme": settings.get("iconTheme", "minimal"),
+                    "enableSpokenPunctuation": settings.get("enableSpokenPunctuation", False),
+                    "wordReplacements": settings.get("wordReplacements", {}),
                 }
+    except json.JSONDecodeError as e:
+        logger.error(f"❌ Settings file is invalid JSON: {e}")
+        logger.error(f"   Fix or delete: {SETTINGS_FILE}")
     except Exception as e:
         logger.warning(f"Failed to load settings from {SETTINGS_FILE}: {e}")
 
     return {
-        'enableCleanup': DEFAULT_ENABLE_CLEANUP,
-        'openaiApiKey': OPENAI_API_KEY,
-        'groqApiKey': GROQ_API_KEY,
-        'provider': DEFAULT_PROVIDER,
-        'audioFeedbackTheme': 'default',
-        'audioFeedbackVolume': 0.3,
-        'iconTheme': 'minimal',
-        'enableSpokenPunctuation': False,
-        'wordReplacements': {},
+        "enableCleanup": DEFAULT_ENABLE_CLEANUP,
+        "openaiApiKey": OPENAI_API_KEY,
+        "groqApiKey": GROQ_API_KEY,
+        "provider": DEFAULT_PROVIDER,
+        "audioFeedbackTheme": "default",
+        "audioFeedbackVolume": 0.3,
+        "iconTheme": "minimal",
+        "enableSpokenPunctuation": False,
+        "wordReplacements": {},
     }
 
 
 # ============================================================================
 # Process Management
 # ============================================================================
+
 
 def is_process_running(pid: int) -> bool:
     """Check if a process with the given PID is running."""
@@ -181,7 +207,7 @@ def acquire_pid_lock() -> bool:
     """
     if os.path.exists(PID_FILE):
         try:
-            with open(PID_FILE, 'r') as f:
+            with open(PID_FILE, "r") as f:
                 old_pid = int(f.read().strip())
 
             if is_process_running(old_pid):
@@ -196,7 +222,7 @@ def acquire_pid_lock() -> bool:
             logger.warning(f"Error reading PID file: {e}, cleaning up")
             os.remove(PID_FILE)
 
-    with open(PID_FILE, 'w') as f:
+    with open(PID_FILE, "w") as f:
         f.write(str(os.getpid()))
 
     return True
@@ -215,19 +241,23 @@ def release_pid_lock() -> None:
 # Custom Exceptions
 # ============================================================================
 
+
 class OflowError(Exception):
     """Base exception for Oflow errors."""
+
     pass
 
 
 class ConfigurationError(OflowError):
     """Raised when configuration is invalid."""
+
     pass
 
 
 # ============================================================================
 # Waybar State Manager
 # ============================================================================
+
 
 class WaybarState:
     """
@@ -237,7 +267,12 @@ class WaybarState:
 
     ICON_THEMES = {
         "emoji": {"idle": "🎙️", "recording": "🎤", "transcribing": "⏳", "error": "❌"},
-        "nerd-font": {"idle": "\uf130", "recording": "\uf111", "transcribing": "\uf110", "error": "\uf131"},
+        "nerd-font": {
+            "idle": "\uf130",
+            "recording": "\uf111",
+            "transcribing": "\uf110",
+            "error": "\uf131",
+        },
         "minimal": {"idle": "○", "recording": "●", "transcribing": "◐", "error": "×"},
         "text": {"idle": "[MIC]", "recording": "[REC]", "transcribing": "[...]", "error": "[ERR]"},
     }
@@ -278,6 +313,7 @@ class WaybarState:
 # ============================================================================
 # Audio Feedback
 # ============================================================================
+
 
 class AudioFeedback:
     """Generates audio feedback tones for recording events."""
@@ -363,6 +399,7 @@ class AudioFeedback:
 # Text Processing (Spoken Punctuation & Replacements)
 # ============================================================================
 
+
 class TextProcessor:
     """Post-processes transcribed text with spoken punctuation and word replacements."""
 
@@ -403,7 +440,9 @@ class TextProcessor:
         ("tab", "\t"),
     ]
 
-    def __init__(self, enable_punctuation: bool = False, replacements: dict[str, str] | None = None):
+    def __init__(
+        self, enable_punctuation: bool = False, replacements: dict[str, str] | None = None
+    ):
         self.enable_punctuation = enable_punctuation
         self.replacements = replacements or {}
 
@@ -427,7 +466,7 @@ class TextProcessor:
         result = text
 
         for phrase, symbol in self.PUNCTUATION_MAP:
-            pattern = re.compile(r'\b' + re.escape(phrase) + r'\b', re.IGNORECASE)
+            pattern = re.compile(r"\b" + re.escape(phrase) + r"\b", re.IGNORECASE)
             result = pattern.sub(symbol, result)
 
         result = self._clean_punctuation_spacing(result)
@@ -437,16 +476,16 @@ class TextProcessor:
         """Apply custom word replacements."""
         result = text
         for word, replacement in self.replacements.items():
-            pattern = re.compile(r'\b' + re.escape(word) + r'\b', re.IGNORECASE)
+            pattern = re.compile(r"\b" + re.escape(word) + r"\b", re.IGNORECASE)
             result = pattern.sub(replacement, result)
         return result
 
     def _clean_punctuation_spacing(self, text: str) -> str:
         """Clean up spacing around punctuation marks."""
         result = text
-        for punct in ['.', ',', '?', '!', ':', ';', ')', ']', '}']:
+        for punct in [".", ",", "?", "!", ":", ";", ")", "]", "}"]:
             result = result.replace(f" {punct}", punct)
-        for punct in ['(', '[', '{']:
+        for punct in ["(", "[", "{"]:
             result = result.replace(f"{punct} ", punct)
         result = result.replace(" \n", "\n").replace("\n ", "\n")
         result = result.replace(" \t", "\t").replace("\t ", "\t")
@@ -456,6 +495,7 @@ class TextProcessor:
 # ============================================================================
 # Audio Processing
 # ============================================================================
+
 
 class AudioValidator:
     """Validates audio data before sending to transcription API."""
@@ -509,6 +549,7 @@ class AudioProcessor:
 # Storage
 # ============================================================================
 
+
 class StorageManager:
     """Manages transcript storage."""
 
@@ -542,23 +583,59 @@ class StorageManager:
 # Common Whisper hallucinations to filter out
 HALLUCINATION_PATTERNS = [
     # YouTube-style hallucinations
-    "thank you", "thanks for watching", "subscribe", "like and subscribe",
-    "see you next time", "bye", "goodbye", "thanks for listening",
-    "please subscribe", "don't forget to", "hit the bell", "leave a comment",
-    "check out", "follow me", "peace", "take care", "have a great",
-    "i'll see you", "catch you", "until next time", "stay tuned",
+    "thank you",
+    "thanks for watching",
+    "subscribe",
+    "like and subscribe",
+    "see you next time",
+    "bye",
+    "goodbye",
+    "thanks for listening",
+    "please subscribe",
+    "don't forget to",
+    "hit the bell",
+    "leave a comment",
+    "check out",
+    "follow me",
+    "peace",
+    "take care",
+    "have a great",
+    "i'll see you",
+    "catch you",
+    "until next time",
+    "stay tuned",
     # AI assistant responses (when Whisper acts like a chatbot)
-    "i'm sorry", "i cannot", "i can't", "as an ai", "i don't have",
-    "i'm not able", "i'm unable", "how can i help", "how may i assist",
-    "is there anything", "let me know if", "feel free to ask",
+    "i'm sorry",
+    "i cannot",
+    "i can't",
+    "as an ai",
+    "i don't have",
+    "i'm not able",
+    "i'm unable",
+    "how can i help",
+    "how may i assist",
+    "is there anything",
+    "let me know if",
+    "feel free to ask",
 ]
 
 # Patterns that indicate Whisper is answering instead of transcribing
 AI_RESPONSE_STARTS = [
-    "i think you", "i believe you", "i would suggest", "i can help",
-    "sure,", "certainly!", "of course!", "absolutely!",
-    "yes, i", "no, i", "well, i think",
-    "the answer is", "the solution is", "here's how", "here is how",
+    "i think you",
+    "i believe you",
+    "i would suggest",
+    "i can help",
+    "sure,",
+    "certainly!",
+    "of course!",
+    "absolutely!",
+    "yes, i",
+    "no, i",
+    "well, i think",
+    "the answer is",
+    "the solution is",
+    "here's how",
+    "here is how",
 ]
 
 
@@ -586,8 +663,9 @@ def is_hallucination(text: str) -> bool:
     return False
 
 
-async def transcribe_audio(client: httpx.AsyncClient, audio: np.ndarray,
-                           api_key: str, provider: str) -> str:
+async def transcribe_audio(
+    client: httpx.AsyncClient, audio: np.ndarray, api_key: str, provider: str
+) -> str:
     """Transcribe audio using Whisper API."""
     if len(audio) == 0:
         return ""
@@ -626,15 +704,21 @@ async def transcribe_audio(client: httpx.AsyncClient, audio: np.ndarray,
                 logger.debug(f"Filtered hallucination: {text}")
                 return ""
             return text
+        elif response.status_code == 401:
+            logger.error(f"❌ Authentication failed: Invalid {provider.capitalize()} API key")
+            logger.error(
+                f"   Get a valid key at: {'https://console.groq.com/keys' if provider == 'groq' else 'https://platform.openai.com/api-keys'}"
+            )
         else:
             logger.error(f"Whisper API error: {response.status_code} - {response.text[:200]}")
+    except httpx.TimeoutException:
+        logger.error(f"❌ API timeout - check your internet connection")
     except Exception as e:
         logger.error(f"Transcription error: {e}")
     return ""
 
 
-async def cleanup_text(client: httpx.AsyncClient, text: str,
-                       api_key: str, provider: str) -> str:
+async def cleanup_text(client: httpx.AsyncClient, text: str, api_key: str, provider: str) -> str:
     """Clean up text using LLM."""
     if not text or len(text) < 3:
         return text
@@ -655,9 +739,9 @@ async def cleanup_text(client: httpx.AsyncClient, text: str,
                 "messages": [
                     {
                         "role": "system",
-                        "content": "You are a transcription editor. Fix ONLY grammar and punctuation errors. Do NOT add, remove, or change any words. Do NOT add greetings, sign-offs, or any other content. Output ONLY the corrected text, nothing else."
+                        "content": "You are a transcription editor. Fix ONLY grammar and punctuation errors. Do NOT add, remove, or change any words. Do NOT add greetings, sign-offs, or any other content. Output ONLY the corrected text, nothing else.",
                     },
-                    {"role": "user", "content": text}
+                    {"role": "user", "content": text},
                 ],
                 "temperature": 0.1,
                 "max_tokens": len(text) + 50,
@@ -678,6 +762,7 @@ async def cleanup_text(client: httpx.AsyncClient, text: str,
 # ============================================================================
 # Text Output
 # ============================================================================
+
 
 def type_text(text: str) -> None:
     """Type text into the active window using wtype."""
@@ -724,6 +809,7 @@ def type_text(text: str) -> None:
 # Voice Dictation Server
 # ============================================================================
 
+
 class VoiceDictationServer:
     """Main server that handles voice dictation via Unix socket."""
 
@@ -736,15 +822,15 @@ class VoiceDictationServer:
         # Load settings
         settings = load_settings()
         self.audio_feedback = AudioFeedback(
-            theme=settings.get('audioFeedbackTheme', 'default'),
-            volume=settings.get('audioFeedbackVolume', 0.3),
+            theme=settings.get("audioFeedbackTheme", "default"),
+            volume=settings.get("audioFeedbackVolume", 0.3),
         )
         self.waybar_state = WaybarState(
-            theme=settings.get('iconTheme', 'minimal'),
+            theme=settings.get("iconTheme", "minimal"),
         )
         self.text_processor = TextProcessor(
-            enable_punctuation=settings.get('enableSpokenPunctuation', False),
-            replacements=settings.get('wordReplacements', {}),
+            enable_punctuation=settings.get("enableSpokenPunctuation", False),
+            replacements=settings.get("wordReplacements", {}),
         )
 
         # Set initial waybar state
@@ -783,7 +869,7 @@ class VoiceDictationServer:
 
         # Pre-warm HTTP connection
         settings = load_settings()
-        provider = settings.get('provider', 'groq')
+        provider = settings.get("provider", "groq")
         if provider == "groq":
             logger.info("oflow Ready (Groq - optimized mode)")
             asyncio.run(self._prewarm_connection())
@@ -793,7 +879,7 @@ class VoiceDictationServer:
     async def _prewarm_connection(self):
         """Pre-warm HTTP connection to reduce first-request latency."""
         settings = load_settings()
-        api_key = settings.get('groqApiKey')
+        api_key = settings.get("groqApiKey")
         if not api_key:
             return
 
@@ -851,8 +937,8 @@ class VoiceDictationServer:
         # Reload settings in case they changed
         settings = load_settings()
         self.text_processor = TextProcessor(
-            enable_punctuation=settings.get('enableSpokenPunctuation', False),
-            replacements=settings.get('wordReplacements', {}),
+            enable_punctuation=settings.get("enableSpokenPunctuation", False),
+            replacements=settings.get("wordReplacements", {}),
         )
 
         logger.info("Recording started")
@@ -887,11 +973,13 @@ class VoiceDictationServer:
     async def _process_transcription(self):
         """Process recorded audio: transcribe, clean up, and type result."""
         settings = load_settings()
-        provider = settings.get('provider', 'groq')
-        api_key = settings.get('groqApiKey') if provider == 'groq' else settings.get('openaiApiKey')
-        enable_cleanup = settings.get('enableCleanup', True)
+        provider = settings.get("provider", "groq")
+        api_key = settings.get("groqApiKey") if provider == "groq" else settings.get("openaiApiKey")
+        enable_cleanup = settings.get("enableCleanup", True)
 
         if not api_key:
+            error_msg = f"❌ {provider.capitalize()} API key not set. Configure it in Settings."
+            logger.error(error_msg)
             self.waybar_state.error("API key not set")
             self.audio_feedback.play_error()
             return
@@ -916,12 +1004,19 @@ class VoiceDictationServer:
             t0 = time.perf_counter()
             raw_text = await transcribe_audio(client, audio, api_key, provider)
             t1 = time.perf_counter()
-            logger.info(f"Transcription: {(t1-t0)*1000:.0f}ms")
 
             if not raw_text:
-                logger.warning("No transcription result")
-                self.waybar_state.idle()
+                logger.error(
+                    f"❌ Transcription failed. Check your {provider.capitalize()} API key. "
+                    f"Get one at: https://console.groq.com/keys"
+                    if provider == "groq"
+                    else "https://platform.openai.com/api-keys"
+                )
+                self.waybar_state.error("Transcription failed")
+                self.audio_feedback.play_error()
                 return
+
+            logger.info(f"Transcription: {(t1 - t0) * 1000:.0f}ms")
 
             # Apply text processing (spoken punctuation, replacements)
             raw_text = self.text_processor.process(raw_text)
@@ -931,7 +1026,7 @@ class VoiceDictationServer:
                 t0 = time.perf_counter()
                 cleaned_text = await cleanup_text(client, raw_text, api_key, provider)
                 t1 = time.perf_counter()
-                logger.info(f"Cleanup: {(t1-t0)*1000:.0f}ms")
+                logger.info(f"Cleanup: {(t1 - t0) * 1000:.0f}ms")
             else:
                 cleaned_text = raw_text
 
@@ -987,32 +1082,63 @@ class VoiceDictationServer:
 # Configuration Validation
 # ============================================================================
 
+
+def check_dependencies() -> list[str]:
+    """Check for required system dependencies."""
+    missing = []
+
+    # Check for text input tools
+    has_wtype = subprocess.run(["which", "wtype"], capture_output=True).returncode == 0
+    has_xdotool = subprocess.run(["which", "xdotool"], capture_output=True).returncode == 0
+    has_wl_copy = subprocess.run(["which", "wl-copy"], capture_output=True).returncode == 0
+
+    if not (has_wtype or has_xdotool):
+        missing.append("wtype or xdotool (for typing text)")
+        if not has_wl_copy:
+            logger.warning("⚠️  No text input method available! Install wtype: sudo pacman -S wtype")
+        else:
+            logger.warning(
+                "⚠️  wtype not found. Text will be copied to clipboard instead. "
+                "Install wtype for auto-typing: sudo pacman -S wtype"
+            )
+
+    return missing
+
+
 def validate_configuration() -> None:
     """Validate application configuration."""
     TRANSCRIPTS_FILE.parent.mkdir(parents=True, exist_ok=True)
     SETTINGS_FILE.parent.mkdir(parents=True, exist_ok=True)
 
+    # Check dependencies
+    check_dependencies()
+
     settings = load_settings()
-    provider = settings.get('provider', 'groq')
+    provider = settings.get("provider", "groq")
 
     if provider == "groq":
-        api_key = settings.get('groqApiKey')
+        api_key = settings.get("groqApiKey")
         if not api_key:
             logger.warning(
-                "Groq API key not configured. "
-                "Set it in the UI Settings or via GROQ_API_KEY environment variable."
+                "⚠️  Groq API key not configured. "
+                "Get one at https://console.groq.com/keys (free tier available)"
             )
         elif not GROQ_API_KEY_PATTERN.match(api_key):
-            logger.warning("Invalid Groq API key format. Expected format: gsk_...")
+            logger.error("❌ Invalid Groq API key format. Expected format: gsk_...")
+        elif len(api_key) > 60:
+            logger.error(
+                "❌ Groq API key looks duplicated (too long). "
+                f"Expected ~56 chars, got {len(api_key)}. Check ~/.oflow/settings.json"
+            )
     else:
-        api_key = settings.get('openaiApiKey')
+        api_key = settings.get("openaiApiKey")
         if not api_key:
             logger.warning(
-                "OpenAI API key not configured. "
+                "⚠️  OpenAI API key not configured. "
                 "Set it in the UI Settings or via OPENAI_API_KEY environment variable."
             )
         elif not OPENAI_API_KEY_PATTERN.match(api_key):
-            logger.warning("Invalid OpenAI API key format. Expected format: sk-...")
+            logger.error("❌ Invalid OpenAI API key format. Expected format: sk-...")
 
     logger.info("Configuration validated successfully")
 
@@ -1020,6 +1146,7 @@ def validate_configuration() -> None:
 # ============================================================================
 # Main Entry Point
 # ============================================================================
+
 
 def main() -> None:
     """Main entry point for Oflow."""

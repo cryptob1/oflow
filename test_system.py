@@ -1,192 +1,262 @@
 #!/usr/bin/env python3
-"""System test script for oflow - tests all components."""
+"""
+System check script for oflow.
+Validates dependencies, configuration, and API connectivity.
+"""
+
+import asyncio
+import json
 import os
+import shutil
 import socket
 import subprocess
 import sys
-import time
 from pathlib import Path
 
-SCRIPT_DIR = Path(__file__).parent.resolve()
+import httpx
 
-def test_backend_running():
-    """Check if backend process is running."""
-    result = subprocess.run(
-        ["pgrep", "-f", "python.*oflow.py"],
-        capture_output=True, text=True
-    )
-    if result.returncode == 0:
-        print("✓ Backend process running (PID: {})".format(result.stdout.strip().split()[0]))
-        return True
+# Colors for terminal output
+GREEN = "\033[92m"
+YELLOW = "\033[93m"
+RED = "\033[91m"
+RESET = "\033[0m"
+BOLD = "\033[1m"
+
+
+def check_mark(passed: bool) -> str:
+    """Return a colored check mark or X."""
+    return f"{GREEN}✓{RESET}" if passed else f"{RED}✗{RESET}"
+
+
+def print_header(text: str):
+    """Print a section header."""
+    print(f"\n{BOLD}{text}{RESET}")
+    print("=" * len(text))
+
+
+def check_dependencies() -> tuple[int, int]:
+    """Check system dependencies."""
+    print_header("System Dependencies")
+
+    checks = {
+        "wtype (Wayland text input)": "wtype",
+        "xdotool (X11 text input)": "xdotool",
+        "wl-copy (clipboard fallback)": "wl-copy",
+        "pactl (audio control)": "pactl",
+    }
+
+    passed = 0
+    total = 0
+    has_text_input = False
+
+    for name, cmd in checks.items():
+        total += 1
+        found = shutil.which(cmd) is not None
+        if found:
+            passed += 1
+            if cmd in ("wtype", "xdotool"):
+                has_text_input = True
+
+        status = check_mark(found)
+        print(f"  {status} {name}")
+
+        if not found and cmd == "wtype":
+            print(f"      {YELLOW}→ Install with: sudo pacman -S wtype{RESET}")
+
+    if not has_text_input:
+        print(f"\n  {YELLOW}⚠  Warning: No text input tool found!{RESET}")
+        print(f"     Install wtype for Wayland: {BOLD}sudo pacman -S wtype{RESET}")
+
+    return passed, total
+
+
+def check_configuration() -> tuple[int, int]:
+    """Check oflow configuration."""
+    print_header("Configuration")
+
+    passed = 0
+    total = 3
+
+    # Check settings file
+    settings_file = Path.home() / ".oflow" / "settings.json"
+    settings_exists = settings_file.exists()
+    print(f"  {check_mark(settings_exists)} Settings file: {settings_file}")
+    if settings_exists:
+        passed += 1
+
+    # Check API key
+    api_key = None
+    provider = "groq"
+    if settings_exists:
+        try:
+            with open(settings_file) as f:
+                settings = json.load(f)
+                provider = settings.get("provider", "groq")
+                api_key = settings.get("groqApiKey" if provider == "groq" else "openaiApiKey")
+        except Exception as e:
+            print(f"      {RED}Error reading settings: {e}{RESET}")
+
+    has_api_key = bool(api_key)
+    print(f"  {check_mark(has_api_key)} {provider.capitalize()} API key configured")
+    if has_api_key:
+        passed += 1
+        # Check for duplicated key
+        if len(api_key) > 60:
+            print(
+                f"      {YELLOW}⚠  API key looks duplicated (length: {len(api_key)}, expected ~56){RESET}"
+            )
+            print(f"      {YELLOW}   Check ~/.oflow/settings.json{RESET}")
     else:
-        print("✗ Backend NOT running")
+        if provider == "groq":
+            print(f"      {YELLOW}→ Get a free key at: https://console.groq.com/keys{RESET}")
+        else:
+            print(f"      {YELLOW}→ Get a key at: https://platform.openai.com/api-keys{RESET}")
+
+    # Check socket
+    socket_exists = os.path.exists("/tmp/voice-dictation.sock")
+    print(f"  {check_mark(socket_exists)} Backend running (socket exists)")
+    if socket_exists:
+        passed += 1
+    else:
+        print(f"      {YELLOW}→ Start with: python oflow.py &{RESET}")
+
+    return passed, total
+
+
+async def check_api_connectivity(api_key: str, provider: str) -> bool:
+    """Test API connectivity."""
+    if not api_key:
         return False
 
-def test_socket_exists():
-    """Check if socket file exists."""
-    sock_path = "/tmp/voice-dictation.sock"
-    if os.path.exists(sock_path):
-        print(f"✓ Socket exists: {sock_path}")
-        return True
-    else:
-        print(f"✗ Socket NOT found: {sock_path}")
-        return False
-
-def test_socket_responsive():
-    """Test if socket accepts connections and responds."""
-    sock_path = "/tmp/voice-dictation.sock"
     try:
-        s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        s.settimeout(2)
-        s.connect(sock_path)
-        s.send(b"status")  # Send a benign command
-        s.close()
-        print("✓ Socket is responsive")
-        return True
-    except socket.timeout:
-        print("✗ Socket timeout - backend may be frozen")
-        return False
-    except ConnectionRefusedError:
-        print("✗ Socket connection refused")
-        return False
-    except Exception as e:
-        print(f"✗ Socket error: {e}")
+        url = (
+            "https://api.groq.com/openai/v1/models"
+            if provider == "groq"
+            else "https://api.openai.com/v1/models"
+        )
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get(url, headers={"Authorization": f"Bearer {api_key}"})
+            return response.status_code == 200
+    except Exception:
         return False
 
-def test_oflow_ctl():
-    """Test oflow-ctl helper script."""
-    ctl_path = os.path.expanduser("~/.local/bin/oflow-ctl")
-    if not os.path.exists(ctl_path):
-        print(f"✗ oflow-ctl not found: {ctl_path}")
-        return False
 
-    # Check it's executable
-    if not os.access(ctl_path, os.X_OK):
-        print(f"✗ oflow-ctl not executable")
-        return False
+async def check_api() -> tuple[int, int]:
+    """Check API configuration and connectivity."""
+    print_header("API Connectivity")
 
-    print(f"✓ oflow-ctl exists and is executable")
-    return True
+    passed = 0
+    total = 1
 
-def test_hyprland_bindings():
-    """Check if Hyprland bindings are loaded."""
+    # Load API key
+    settings_file = Path.home() / ".oflow" / "settings.json"
+    api_key = None
+    provider = "groq"
+
+    if settings_file.exists():
+        try:
+            with open(settings_file) as f:
+                settings = json.load(f)
+                provider = settings.get("provider", "groq")
+                api_key = settings.get("groqApiKey" if provider == "groq" else "openaiApiKey")
+        except Exception:
+            pass
+
+    if not api_key:
+        print(f"  {check_mark(False)} API connectivity (no key configured)")
+        return passed, total
+
+    # Test connectivity
+    print(f"  Testing {provider.capitalize()} API...", end=" ", flush=True)
+    connected = await check_api_connectivity(api_key, provider)
+    print(f"\r  {check_mark(connected)} {provider.capitalize()} API connectivity")
+
+    if connected:
+        passed += 1
+    else:
+        print(f"      {RED}Failed to connect. Check your API key.{RESET}")
+        if provider == "groq":
+            print(f"      {YELLOW}→ Verify at: https://console.groq.com/keys{RESET}")
+        else:
+            print(f"      {YELLOW}→ Verify at: https://platform.openai.com/api-keys{RESET}")
+
+    return passed, total
+
+
+def check_audio() -> tuple[int, int]:
+    """Check audio configuration."""
+    print_header("Audio System")
+
+    passed = 0
+    total = 1
+
+    # Check for default audio source
     try:
         result = subprocess.run(
-            ["hyprctl", "binds"],
-            capture_output=True, text=True, timeout=5
+            ["pactl", "list", "sources", "short"], capture_output=True, text=True, timeout=5
         )
-        if "oflow-ctl" in result.stdout:
-            # Find which key oflow is bound to
-            lines = result.stdout.split("\n")
-            oflow_key = None
-            for i, line in enumerate(lines):
-                if "oflow-ctl" in line:
-                    # Search backwards for key
-                    for j in range(i, max(0, i-10), -1):
-                        if "key:" in lines[j]:
-                            oflow_key = lines[j].split(":")[1].strip()
-                            break
-                    break
-            print(f"✓ Hyprland bindings loaded (Super+{oflow_key})")
-            return True
+        has_sources = result.returncode == 0 and len(result.stdout.strip()) > 0
+        print(f"  {check_mark(has_sources)} Audio input device available")
+        if has_sources:
+            passed += 1
         else:
-            print("✗ Hyprland bindings NOT loaded")
-            return False
-    except Exception as e:
-        print(f"✗ Error checking Hyprland bindings: {e}")
-        return False
+            print(f"      {RED}No audio sources found{RESET}")
+    except (subprocess.TimeoutExpired, FileNotFoundError):
+        print(f"  {check_mark(False)} Audio input device (pactl not available)")
 
-def test_settings_file():
-    """Check settings file exists and is valid."""
-    settings_path = os.path.expanduser("~/.oflow/settings.json")
-    if not os.path.exists(settings_path):
-        print(f"✗ Settings file not found: {settings_path}")
-        return False
+    return passed, total
 
-    try:
-        import json
-        with open(settings_path) as f:
-            settings = json.load(f)
-        provider = settings.get("provider", "not set")
-        print(f"✓ Settings file valid (provider: {provider})")
-        return True
-    except Exception as e:
-        print(f"✗ Settings file invalid: {e}")
-        return False
 
-def test_ui_running():
-    """Check if UI process is running."""
-    result = subprocess.run(
-        ["pgrep", "-f", "oflow-ui"],
-        capture_output=True, text=True
-    )
-    if result.returncode == 0:
-        print("✓ UI process running")
-        return True
+async def main():
+    """Run all system checks."""
+    print(f"\n{BOLD}oflow System Check{RESET}")
+    print(f"{'=' * 40}\n")
+
+    total_passed = 0
+    total_checks = 0
+
+    # Run checks
+    p, t = check_dependencies()
+    total_passed += p
+    total_checks += t
+
+    p, t = check_configuration()
+    total_passed += p
+    total_checks += t
+
+    p, t = await check_api()
+    total_passed += p
+    total_checks += t
+
+    p, t = check_audio()
+    total_passed += p
+    total_checks += t
+
+    # Summary
+    print_header("Summary")
+    percentage = (total_passed / total_checks * 100) if total_checks > 0 else 0
+
+    if total_passed == total_checks:
+        color = GREEN
+        status = "All checks passed! ✓"
+    elif total_passed >= total_checks * 0.7:
+        color = YELLOW
+        status = "Most checks passed"
     else:
-        print("✗ UI NOT running")
-        return False
+        color = RED
+        status = "Several issues found"
 
-def start_backend():
-    """Try to start the backend."""
-    print("\nAttempting to start backend...")
-    os.chdir(SCRIPT_DIR)
+    print(f"  {color}{status}{RESET}")
+    print(f"  {total_passed}/{total_checks} checks passed ({percentage:.0f}%)")
 
-    # Activate venv and start
-    cmd = f"source {SCRIPT_DIR}/.venv/bin/activate && python oflow.py > /tmp/oflow-test.log 2>&1 &"
-    subprocess.run(cmd, shell=True, executable="/bin/bash")
-    time.sleep(3)
-
-    # Check log for errors
-    try:
-        with open("/tmp/oflow-test.log") as f:
-            log = f.read()
-        if "Error" in log or "Exception" in log:
-            print(f"Backend log shows errors:\n{log[:500]}")
-            return False
-        print("Backend started (check /tmp/oflow-test.log for details)")
-        return True
-    except:
-        return test_backend_running()
-
-def main():
-    print("=" * 50)
-    print("OFLOW SYSTEM TEST")
-    print("=" * 50)
-
-    results = {}
-
-    print("\n--- Process Status ---")
-    results["backend"] = test_backend_running()
-    results["ui"] = test_ui_running()
-
-    print("\n--- Socket Status ---")
-    results["socket_exists"] = test_socket_exists()
-    if results["socket_exists"]:
-        results["socket_responsive"] = test_socket_responsive()
+    if total_passed < total_checks:
+        print(f"\n  {YELLOW}See messages above for how to fix issues.{RESET}")
+        sys.exit(1)
     else:
-        results["socket_responsive"] = False
+        print(f"\n  {GREEN}Your system is ready to use oflow!{RESET}")
+        print(f"  Press {BOLD}Super+D{RESET} to start recording.")
+        sys.exit(0)
 
-    print("\n--- Configuration ---")
-    results["oflow_ctl"] = test_oflow_ctl()
-    results["hyprland"] = test_hyprland_bindings()
-    results["settings"] = test_settings_file()
-
-    print("\n" + "=" * 50)
-    passed = sum(results.values())
-    total = len(results)
-    print(f"RESULTS: {passed}/{total} checks passed")
-
-    if not results["backend"]:
-        print("\n⚠ Backend not running. Start with:")
-        print(f"  cd {SCRIPT_DIR} && source .venv/bin/activate && python oflow.py &")
-
-    if not results["socket_responsive"] and results["backend"]:
-        print("\n⚠ Backend running but socket unresponsive (frozen). Restart with:")
-        print(f"  pkill -9 -f oflow.py && cd {SCRIPT_DIR} && source .venv/bin/activate && python oflow.py &")
-
-    print("=" * 50)
-    return 0 if passed == total else 1
 
 if __name__ == "__main__":
-    sys.exit(main())
+    asyncio.run(main())
