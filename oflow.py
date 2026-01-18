@@ -163,7 +163,7 @@ def load_settings() -> dict:
                     "provider": settings.get("provider", DEFAULT_PROVIDER),
                     "audioFeedbackTheme": settings.get("audioFeedbackTheme", "default"),
                     "audioFeedbackVolume": settings.get("audioFeedbackVolume", 0.3),
-                    "iconTheme": settings.get("iconTheme", "minimal"),
+                    "iconTheme": settings.get("iconTheme", "nerd-font"),
                     "enableSpokenPunctuation": settings.get("enableSpokenPunctuation", False),
                     "wordReplacements": settings.get("wordReplacements", {}),
                 }
@@ -180,7 +180,7 @@ def load_settings() -> dict:
         "provider": DEFAULT_PROVIDER,
         "audioFeedbackTheme": "default",
         "audioFeedbackVolume": 0.3,
-        "iconTheme": "minimal",
+        "iconTheme": "nerd-font",
         "enableSpokenPunctuation": False,
         "wordReplacements": {},
     }
@@ -268,16 +268,16 @@ class WaybarState:
     ICON_THEMES = {
         "emoji": {"idle": "🎙️", "recording": "🎤", "transcribing": "⏳", "error": "❌"},
         "nerd-font": {
-            "idle": "\uf130",
-            "recording": "\uf111",
-            "transcribing": "\uf110",
-            "error": "\uf131",
+            "idle": "󰍬",  # nf-md-microphone
+            "recording": "󰍮",  # nf-md-microphone_variant
+            "transcribing": "󰦖",  # nf-md-text_to_speech
+            "error": "󰍭",  # nf-md-microphone_off
         },
         "minimal": {"idle": "○", "recording": "●", "transcribing": "◐", "error": "×"},
         "text": {"idle": "[MIC]", "recording": "[REC]", "transcribing": "[...]", "error": "[ERR]"},
     }
 
-    def __init__(self, theme: str = "minimal"):
+    def __init__(self, theme: str = "nerd-font"):
         self.theme = theme
         self.icons = self.ICON_THEMES.get(theme, self.ICON_THEMES["minimal"])
         RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
