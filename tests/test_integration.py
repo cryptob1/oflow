@@ -5,6 +5,7 @@ Run with: pytest -m integration
 
 Skip in CI if no API keys: pytest -m "not integration"
 """
+
 import json
 import os
 import wave
@@ -15,10 +16,10 @@ import httpx
 from pathlib import Path
 
 import sys
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from oflow import (
-    WhisperAPI,
     load_settings,
     SAMPLE_RATE,
     ConfigurationError,
@@ -57,10 +58,10 @@ def create_speech_audio(text: str = "hello", duration: float = 1.0) -> np.ndarra
     t = np.linspace(0, duration, int(SAMPLE_RATE * duration))
     # Mix of frequencies that roughly simulate speech formants
     audio = (
-        np.sin(2 * np.pi * 200 * t) * 0.3 +
-        np.sin(2 * np.pi * 400 * t) * 0.2 +
-        np.sin(2 * np.pi * 800 * t) * 0.1 +
-        np.random.normal(0, 0.02, len(t))  # Add some noise
+        np.sin(2 * np.pi * 200 * t) * 0.3
+        + np.sin(2 * np.pi * 400 * t) * 0.2
+        + np.sin(2 * np.pi * 800 * t) * 0.1
+        + np.random.normal(0, 0.02, len(t))  # Add some noise
     )
     # Normalize
     audio = audio / np.max(np.abs(audio)) * 0.95
@@ -84,36 +85,13 @@ def audio_to_wav_bytes(audio: np.ndarray) -> bytes:
 groq_api_key = get_groq_api_key()
 openai_api_key = get_openai_api_key()
 
-skip_groq = pytest.mark.skipif(
-    not groq_api_key,
-    reason="GROQ_API_KEY not set"
-)
+skip_groq = pytest.mark.skipif(not groq_api_key, reason="GROQ_API_KEY not set")
 
-skip_openai = pytest.mark.skipif(
-    not openai_api_key,
-    reason="OPENAI_API_KEY not set"
-)
+skip_openai = pytest.mark.skipif(not openai_api_key, reason="OPENAI_API_KEY not set")
 
 
-class TestWhisperAPIGroq:
-    """Integration tests for Groq Whisper API."""
-
-    @pytest.mark.integration
-    @skip_groq
-    def test_whisper_api_init_groq(self):
-        """WhisperAPI should initialize with Groq provider."""
-        api = WhisperAPI(api_key=groq_api_key, provider="groq")
-
-        assert api.provider == "groq"
-        assert api.model == "whisper-large-v3-turbo"
-        assert "groq.com" in api.api_url
-
-    @pytest.mark.integration
-    @skip_groq
-    def test_whisper_api_rejects_empty_key(self):
-        """WhisperAPI should reject empty API key."""
-        with pytest.raises(ConfigurationError):
-            WhisperAPI(api_key="", provider="groq")
+class TestGroqTranscription:
+    """Integration tests for Groq Whisper API (direct API calls)."""
 
     @pytest.mark.integration
     @pytest.mark.slow
@@ -142,20 +120,6 @@ class TestWhisperAPIGroq:
         # Synthetic audio won't produce meaningful text, but API should respond
 
 
-class TestWhisperAPIOpenAI:
-    """Integration tests for OpenAI Whisper API."""
-
-    @pytest.mark.integration
-    @skip_openai
-    def test_whisper_api_init_openai(self):
-        """WhisperAPI should initialize with OpenAI provider."""
-        api = WhisperAPI(api_key=openai_api_key, provider="openai")
-
-        assert api.provider == "openai"
-        assert api.model == "whisper-1"
-        assert "openai.com" in api.api_url
-
-
 class TestSettings:
     """Tests for settings loading."""
 
@@ -166,7 +130,6 @@ class TestSettings:
 
         assert isinstance(settings, dict)
         assert "enableCleanup" in settings
-        assert "enableMemory" in settings
         assert "provider" in settings
 
     @pytest.mark.unit
@@ -175,7 +138,6 @@ class TestSettings:
         settings = load_settings()
 
         assert isinstance(settings["enableCleanup"], bool)
-        assert isinstance(settings["enableMemory"], bool)
         assert settings["provider"] in ("openai", "groq")
 
 

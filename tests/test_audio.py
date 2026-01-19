@@ -2,7 +2,7 @@
 
 These tests run without external dependencies (no API calls required).
 """
-import base64
+
 import wave
 import io
 import numpy as np
@@ -11,6 +11,7 @@ import pytest
 # Import from oflow module
 import sys
 import os
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from oflow import (
@@ -120,32 +121,28 @@ class TestAudioProcessor:
         assert correlation > 0.99
 
     @pytest.mark.unit
-    def test_to_base64_wav_produces_valid_wav(self, valid_audio, sample_rate):
-        """to_base64_wav should produce valid base64-encoded WAV data."""
-        base64_str = AudioProcessor.to_base64_wav(valid_audio, sample_rate)
+    def test_to_wav_bytes_produces_valid_wav(self, valid_audio, sample_rate):
+        """to_wav_bytes should produce valid WAV bytes."""
+        wav_bytes = AudioProcessor.to_wav_bytes(valid_audio)
 
-        # Should be non-empty string
-        assert isinstance(base64_str, str)
-        assert len(base64_str) > 0
-
-        # Should be valid base64
-        wav_bytes = base64.b64decode(base64_str)
+        # Should be non-empty bytes
+        assert isinstance(wav_bytes, bytes)
+        assert len(wav_bytes) > 0
 
         # Should be valid WAV file
         buffer = io.BytesIO(wav_bytes)
-        with wave.open(buffer, 'rb') as wav_file:
+        with wave.open(buffer, "rb") as wav_file:
             assert wav_file.getnchannels() == 1
             assert wav_file.getsampwidth() == 2  # 16-bit
             assert wav_file.getframerate() == sample_rate
 
     @pytest.mark.unit
-    def test_to_base64_wav_preserves_duration(self, valid_audio, sample_rate):
+    def test_to_wav_bytes_preserves_duration(self, valid_audio, sample_rate):
         """WAV encoding should preserve audio duration."""
-        base64_str = AudioProcessor.to_base64_wav(valid_audio, sample_rate)
-        wav_bytes = base64.b64decode(base64_str)
+        wav_bytes = AudioProcessor.to_wav_bytes(valid_audio)
 
         buffer = io.BytesIO(wav_bytes)
-        with wave.open(buffer, 'rb') as wav_file:
+        with wave.open(buffer, "rb") as wav_file:
             n_frames = wav_file.getnframes()
             duration = n_frames / wav_file.getframerate()
             expected_duration = len(valid_audio) / sample_rate
@@ -153,12 +150,11 @@ class TestAudioProcessor:
             assert abs(duration - expected_duration) < 0.01
 
     @pytest.mark.unit
-    def test_to_base64_wav_empty_audio(self):
+    def test_to_wav_bytes_empty_audio(self):
         """WAV encoding of empty audio should produce valid but empty WAV."""
         empty = np.array([], dtype=np.float32)
-        base64_str = AudioProcessor.to_base64_wav(empty, 16000)
+        wav_bytes = AudioProcessor.to_wav_bytes(empty)
 
-        wav_bytes = base64.b64decode(base64_str)
         buffer = io.BytesIO(wav_bytes)
-        with wave.open(buffer, 'rb') as wav_file:
+        with wave.open(buffer, "rb") as wav_file:
             assert wav_file.getnframes() == 0
