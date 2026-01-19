@@ -14,7 +14,7 @@ Press a key, speak, press again — your words appear wherever you're typing.
 - **Audio feedback** — Configurable sounds for start/stop/error
 - **Spoken punctuation** — Say "period" or "new line" to insert symbols
 - **Privacy-first** — All data stored locally, no cloud backend
-- **Open source** — Built with [LangGraph](https://github.com/langchain-ai/langgraph) + Tauri
+- **Open source** — Built with Python + Tauri
 
 ## Install
 
@@ -67,7 +67,7 @@ Press Super+D → Speak → Press Super+D → Text appears in active window
 
 - **Transcription**: [Groq Whisper](https://groq.com) (200x faster than OpenAI)
 - **Text cleanup**: Llama 3.1 8B via Groq
-- **Pipeline**: [LangGraph](https://github.com/langchain-ai/langgraph)
+- **Backend**: Python with asyncio + httpx
 - **Desktop app**: [Tauri](https://tauri.app) + React
 
 ## For LLMs
@@ -173,13 +173,19 @@ The icon is automatically configured during `make install`.
 
 ## Configuration
 
-Settings in `~/.oflow/settings.json`:
+Settings are stored in `~/.oflow/settings.json`:
 
 ```json
 {
-  "audioFeedbackTheme": "default",   // default, subtle, mechanical, silent
-  "enableSpokenPunctuation": false,  // say "period" → "."
-  "wordReplacements": {}             // custom word corrections
+  "provider": "groq",                 // "groq" (recommended) or "openai"
+  "groqApiKey": "gsk_...",            // Your Groq API key
+  "openaiApiKey": "sk-...",           // Your OpenAI API key (if using openai provider)
+  "enableCleanup": true,              // LLM grammar/punctuation cleanup
+  "audioFeedbackTheme": "default",    // "default", "subtle", "mechanical", "silent"
+  "audioFeedbackVolume": 0.3,         // 0.0 to 1.0
+  "iconTheme": "nerd-font",           // "nerd-font", "emoji", "minimal", "text"
+  "enableSpokenPunctuation": false,   // Say "period" → "."
+  "wordReplacements": {}              // Custom word corrections {"oflow": "Oflow"}
 }
 ```
 

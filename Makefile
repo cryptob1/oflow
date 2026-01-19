@@ -106,21 +106,25 @@ install-combined: build-combined setup-hotkey
 	@echo "The backend is now embedded - no separate backend process needed!"
 	@# Create toggle script for Waybar
 	@echo '#!/bin/bash' > ~/.local/bin/oflow-toggle
-	@echo 'LOCKFILE="/tmp/oflow-toggle.lock"' >> ~/.local/bin/oflow-toggle
-	@echo 'exec 200>"$$LOCKFILE"' >> ~/.local/bin/oflow-toggle
-	@echo 'flock -n 200 || exit 0' >> ~/.local/bin/oflow-toggle
-	@echo 'ADDR=$$(hyprctl clients -j | jq -r ".[] | select(.class == \"oflow\") | .address" | head -1)' >> ~/.local/bin/oflow-toggle
+	@echo '# oflow-toggle: Toggle oflow UI window visibility' >> ~/.local/bin/oflow-toggle
+	@echo 'OFLOW_BIN="$$HOME/.local/bin/oflow"' >> ~/.local/bin/oflow-toggle
+	@echo 'WIN_CLASS="oflow-ui"' >> ~/.local/bin/oflow-toggle
+	@echo 'ADDR=$$(hyprctl clients -j | jq -r ".[] | select(.class == \"$$WIN_CLASS\") | .address" | head -1)' >> ~/.local/bin/oflow-toggle
 	@echo 'if [ -n "$$ADDR" ] && [ "$$ADDR" != "null" ]; then' >> ~/.local/bin/oflow-toggle
-	@echo '    FOCUSED=$$(hyprctl activewindow -j | jq -r ".address" 2>/dev/null)' >> ~/.local/bin/oflow-toggle
-	@echo '    if [ "$$ADDR" = "$$FOCUSED" ]; then' >> ~/.local/bin/oflow-toggle
-	@echo '        hyprctl dispatch movetoworkspacesilent special:hidden,address:$$ADDR' >> ~/.local/bin/oflow-toggle
-	@echo '    else' >> ~/.local/bin/oflow-toggle
+	@echo '    WS=$$(hyprctl clients -j | jq -r ".[] | select(.address == \"$$ADDR\") | .workspace.name")' >> ~/.local/bin/oflow-toggle
+	@echo '    if [[ "$$WS" == special:* ]]; then' >> ~/.local/bin/oflow-toggle
 	@echo '        hyprctl dispatch movetoworkspacesilent e+0,address:$$ADDR' >> ~/.local/bin/oflow-toggle
 	@echo '        hyprctl dispatch focuswindow address:$$ADDR' >> ~/.local/bin/oflow-toggle
+	@echo '    else' >> ~/.local/bin/oflow-toggle
+	@echo '        FOCUSED=$$(hyprctl activewindow -j | jq -r ".address" 2>/dev/null)' >> ~/.local/bin/oflow-toggle
+	@echo '        if [ "$$ADDR" = "$$FOCUSED" ]; then' >> ~/.local/bin/oflow-toggle
+	@echo '            hyprctl dispatch movetoworkspacesilent special:hidden,address:$$ADDR' >> ~/.local/bin/oflow-toggle
+	@echo '        else' >> ~/.local/bin/oflow-toggle
+	@echo '            hyprctl dispatch focuswindow address:$$ADDR' >> ~/.local/bin/oflow-toggle
+	@echo '        fi' >> ~/.local/bin/oflow-toggle
 	@echo '    fi' >> ~/.local/bin/oflow-toggle
 	@echo 'else' >> ~/.local/bin/oflow-toggle
-	@echo '    pgrep -x oflow > /dev/null && pkill -x oflow && sleep 0.2' >> ~/.local/bin/oflow-toggle
-	@echo '    ~/.local/bin/oflow &' >> ~/.local/bin/oflow-toggle
+	@echo '    "$$OFLOW_BIN" &' >> ~/.local/bin/oflow-toggle
 	@echo 'fi' >> ~/.local/bin/oflow-toggle
 	@chmod +x ~/.local/bin/oflow-toggle
 	@$(MAKE) setup-waybar
