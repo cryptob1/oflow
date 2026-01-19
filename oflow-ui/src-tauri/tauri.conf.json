@@ -39,6 +39,9 @@
     ],
     "externalBin": [
       "binaries/oflow-backend"
+    ],
+    "resources": [
+      "resources/*"
     ]
   }
 }

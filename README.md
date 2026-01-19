@@ -21,9 +21,10 @@ Press a key, speak, press again — your words appear wherever you're typing.
 ### Requirements
 
 - **wtype** — Types text into your active window (Wayland)
+- **webkit2gtk-4.1** — Web rendering engine for Tauri desktop app
 
 ```bash
-sudo pacman -S wtype
+sudo pacman -S wtype webkit2gtk-4.1
 ```
 
 ### Quick Install (Arch/Omarchy)
@@ -46,7 +47,7 @@ chmod +x oflow-*.AppImage
 ## Setup
 
 1. Get a free Groq API key: https://console.groq.com/keys
-2. Click the `○` icon in Waybar → Settings → paste your Groq key
+2. Click the `󰍬` microphone icon in Waybar → Settings → paste your Groq key
 3. Press **Super+D** to start recording, press again to stop and transcribe
 
 That's it.
@@ -74,8 +75,8 @@ Press Super+D → Speak → Press Super+D → Text appears in active window
 If you're an LLM helping a user install oflow on Arch/Omarchy:
 
 ```bash
-# 1. Install runtime dependency
-sudo pacman -S wtype
+# 1. Install runtime dependencies
+sudo pacman -S wtype webkit2gtk-4.1
 
 # 2. Clone and install
 git clone https://github.com/CryptoB1/oflow.git
@@ -86,8 +87,8 @@ make install
 Or using AppImage:
 
 ```bash
-# 1. Install wtype (required)
-sudo pacman -S wtype
+# 1. Install dependencies (required)
+sudo pacman -S wtype webkit2gtk-4.1
 
 # 2. Download and run AppImage
 curl -L -o oflow.AppImage "https://github.com/CryptoB1/oflow/releases/latest/download/oflow.AppImage"
@@ -163,10 +164,10 @@ python test_system.py
 
 ## Waybar Integration
 
-oflow displays a clickable status icon in Waybar:
-- `○` idle (green) — click to open settings
-- `●` recording (red)
-- `◐` transcribing (yellow)
+oflow displays a clickable microphone icon in Waybar:
+- `󰍬` idle (green) — click to open settings
+- `󰍬` recording (red)
+- `󰍬` transcribing (yellow)
 
 The icon is automatically configured during `make install`.
 

@@ -1,13 +1,15 @@
-.PHONY: help run stop dev build test test-unit test-integration test-all format lint clean install uninstall setup-backend setup-frontend setup-waybar setup-autostart setup-hotkey install-oflow-ctl
+.PHONY: help run stop dev build build-combined test test-unit test-integration test-all format lint clean install install-combined uninstall setup-backend setup-frontend setup-waybar setup-autostart setup-hotkey install-oflow-ctl
 
 help:
 	@echo "Oflow - Voice Dictation for Hyprland/Wayland"
 	@echo ""
 	@echo "Available targets:"
 	@echo "  make install         - Full install: build, install binary, setup Waybar & autostart"
+	@echo "  make install-combined- Install combined binary with embedded backend"
 	@echo "  make uninstall       - Remove oflow binary, Waybar config, and autostart"
 	@echo "  make dev             - Run in development mode (hot reload)"
 	@echo "  make build           - Build release binary only"
+	@echo "  make build-combined  - Build combined binary with embedded backend"
 	@echo "  make run             - Start the backend server only"
 	@echo "  make stop            - Stop all oflow processes"
 	@echo "  make test            - Run unit tests (fast, no API needed)"
@@ -41,6 +43,17 @@ build:
 		cd oflow-ui && npm install; \
 	fi
 	@cd oflow-ui && npm run tauri build
+
+build-combined:
+	@echo "Building combined Oflow binary with embedded backend..."
+	@python3 scripts/build-combined.py
+	@if [ ! -d "oflow-ui/node_modules" ]; then \
+		echo "Installing npm dependencies..."; \
+		cd oflow-ui && npm install; \
+	fi
+	@cd oflow-ui && npm run tauri build
+	@echo "Combined binary build complete!"
+	@echo "Binary location: oflow-ui/src-tauri/target/release/oflow-ui"
 
 run:
 	@echo "Starting Oflow backend..."
@@ -80,6 +93,17 @@ install: build setup-hotkey
 	@mkdir -p ~/.local/bin
 	@cp oflow-ui/src-tauri/target/release/oflow-ui ~/.local/bin/oflow
 	@chmod +x ~/.local/bin/oflow
+	@echo "Note: Backend needs to be started separately with 'make run'"
+
+install-combined: build-combined setup-hotkey
+	@echo "Installing combined oflow with embedded backend..."
+	@mkdir -p ~/.local/bin
+	@cp oflow-ui/src-tauri/target/release/oflow-ui ~/.local/bin/oflow
+	@chmod +x ~/.local/bin/oflow
+	@# Update autostart to use the new binary
+	@sed -i 's|Exec=.*|Exec=$$HOME/.local/bin/oflow|' ~/.config/autostart/oflow.desktop
+	@echo "Combined installation complete!"
+	@echo "The backend is now embedded - no separate backend process needed!"
 	@# Create toggle script for Waybar
 	@echo '#!/bin/bash' > ~/.local/bin/oflow-toggle
 	@echo 'LOCKFILE="/tmp/oflow-toggle.lock"' >> ~/.local/bin/oflow-toggle
@@ -115,15 +139,11 @@ setup-waybar:
 	@if [ -f ~/.config/waybar/config.jsonc ]; then \
 		if ! grep -q '"custom/oflow"' ~/.config/waybar/config.jsonc; then \
 			echo "Adding oflow module to Waybar config..."; \
-			echo "Please add 'custom/oflow' to your modules and add this config:"; \
-			echo '  "custom/oflow": {'; \
-			echo '    "exec": "cat $$XDG_RUNTIME_DIR/oflow/state 2>/dev/null || echo '\''{"text":"○","class":"idle","tooltip":"oflow not running"}'\''",'; \
-			echo '    "return-type": "json",'; \
-			echo '    "interval": 1,'; \
-			echo '    "format": "{}",'; \
-			echo '    "tooltip": true,'; \
-			echo '    "on-click": "~/.local/bin/oflow-toggle"'; \
-			echo '  }'; \
+			sed -i 's/"modules-center": \[\(.*\)\]/"modules-center": [\1, "custom/spacer", "custom/oflow"]/' ~/.config/waybar/config.jsonc; \
+			echo "Adding spacer module..."; \
+			sed -i '/^}/i \  "custom/spacer": {\n    "format": "  ",\n    "tooltip": false\n  },' ~/.config/waybar/config.jsonc; \
+			echo "Adding oflow module definition..."; \
+			sed -i '/^}/i \  "custom/oflow": {\n    "exec": "cat $$XDG_RUNTIME_DIR/oflow/state 2>/dev/null || echo '\''{\"text\":\"󰍬\",\"class\":\"idle\",\"tooltip\":\"oflow not running\"}\''',"\n    "return-type": "json",\n    "interval": 1,\n    "format": "{}",\n    "tooltip": true,\n    "on-click": "~/.local/bin/oflow-toggle"\n  },' ~/.config/waybar/config.jsonc; \
 		else \
 			echo "Waybar oflow module already configured"; \
 		fi \
@@ -138,12 +158,12 @@ setup-autostart:
 	@echo "Type=Application" >> ~/.config/autostart/oflow.desktop
 	@echo "Name=oflow" >> ~/.config/autostart/oflow.desktop
 	@echo "Comment=Voice dictation for Hyprland" >> ~/.config/autostart/oflow.desktop
-	@echo "Exec=$(HOME)/.local/bin/oflow" >> ~/.config/autostart/oflow.desktop
+	@echo "Exec=$(HOME)/.local/bin/oflow --hidden" >> ~/.config/autostart/oflow.desktop
 	@echo "Icon=audio-input-microphone" >> ~/.config/autostart/oflow.desktop
 	@echo "Terminal=false" >> ~/.config/autostart/oflow.desktop
 	@echo "Categories=Utility;AudioVideo;" >> ~/.config/autostart/oflow.desktop
 	@echo "StartupNotify=false" >> ~/.config/autostart/oflow.desktop
-	@echo "Autostart entry created"
+	@echo "Autostart entry created (starts hidden)"
 
 install-oflow-ctl:
 	@echo "Installing oflow-ctl..."

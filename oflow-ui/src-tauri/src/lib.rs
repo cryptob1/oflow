@@ -264,6 +264,30 @@ async fn check_backend_status() -> Result<bool, String> {
     Ok(is_backend_running().await)
 }
 
+/// Starts the development backend (fallback when embedded backend not available).
+fn start_development_backend() {
+    let oflow_dir = std::env::var("OFLOW_DIR")
+        .unwrap_or_else(|_| dirs::home_dir()
+            .map(|h| h.join("code/oflow").to_string_lossy().to_string())
+            .unwrap_or_default());
+    
+    let python_path = format!("{oflow_dir}/.venv/bin/python");
+    let script_path = format!("{oflow_dir}/oflow.py");
+    
+    if std::path::Path::new(&python_path).exists() && std::path::Path::new(&script_path).exists() {
+        log::info!("Starting development backend from {}", script_path);
+        match std::process::Command::new(&python_path)
+            .arg(&script_path)
+            .spawn()
+        {
+            Ok(_) => log::info!("Development backend started"),
+            Err(e) => log::error!("Failed to start development backend: {}", e),
+        }
+    } else {
+        log::error!("Development backend not found at {} or {}", python_path, script_path);
+    }
+}
+
 /// Shows the main window.
 #[tauri::command]
 async fn show_window(window: Window) -> Result<(), String> {
@@ -474,25 +498,25 @@ pub fn run() {
             // Start Python backend if not already running
             let socket_path = std::path::Path::new("/tmp/voice-dictation.sock");
             if !socket_path.exists() {
-                let oflow_dir = std::env::var("OFLOW_DIR")
-                    .unwrap_or_else(|_| dirs::home_dir()
-                        .map(|h| h.join("code/oflow").to_string_lossy().to_string())
-                        .unwrap_or_default());
-                
-                let python_path = format!("{oflow_dir}/.venv/bin/python");
-                let script_path = format!("{oflow_dir}/oflow.py");
-                
-                if std::path::Path::new(&python_path).exists() && std::path::Path::new(&script_path).exists() {
-                    log::info!("Starting backend from {}", script_path);
-                    match std::process::Command::new(&python_path)
-                        .arg(&script_path)
-                        .spawn()
-                    {
-                        Ok(_) => log::info!("Backend started"),
-                        Err(e) => log::error!("Failed to start backend: {}", e),
+                // Try to start embedded backend first, fallback to development backend
+                if let Ok(resource_path) = app.path().resource_dir() {
+                    let backend_script = resource_path.join("oflow-backend.sh");
+                    
+                    if backend_script.exists() {
+                        log::info!("Starting embedded backend from {:?}", backend_script);
+                        match std::process::Command::new(&backend_script)
+                            .spawn()
+                        {
+                            Ok(_) => log::info!("Embedded backend started"),
+                            Err(e) => log::error!("Failed to start embedded backend: {}", e),
+                        }
+                    } else {
+                        log::warn!("Embedded backend script not found at {:?}", backend_script);
+                        start_development_backend();
                     }
                 } else {
-                    log::error!("Backend not found at {} or {}", python_path, script_path);
+                    log::warn!("Could not get resource directory, trying development backend");
+                    start_development_backend();
                 }
             } else {
                 log::info!("Backend already running (socket exists)");
