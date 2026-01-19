@@ -946,13 +946,18 @@ class VoiceDictationServer:
 
     def _stop_recording(self):
         """Stop recording and process audio."""
-        self.is_recording = False
-
         self.waybar_state.transcribing()
         self.audio_feedback.play_stop()
 
         start = time.perf_counter()
-        time.sleep(0.1)  # Brief pause to collect final audio
+
+        # Keep recording flag ON during the grace period so callback
+        # continues queueing audio. This prevents cutting off the end.
+        time.sleep(0.15)
+        self.is_recording = False
+
+        # Small additional delay to let any in-flight callback complete
+        time.sleep(0.05)
 
         # Drain remaining audio from queue
         while not self.audio_queue.empty():
