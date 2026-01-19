@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import fcntl
 import io
 import json
 import logging
@@ -32,6 +33,7 @@ import signal
 import socket
 import subprocess
 import sys
+import threading
 import time
 import wave
 from dataclasses import dataclass
@@ -92,6 +94,14 @@ GROQ_WHISPER_URL = "https://api.groq.com/openai/v1/audio/transcriptions"
 OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions"
 GROQ_CHAT_URL = "https://api.groq.com/openai/v1/chat/completions"
 
+# API key validation constants
+GROQ_API_KEY_LENGTH = 56
+GROQ_API_KEY_MAX_LENGTH = 60  # Warn if longer (likely duplicated)
+OPENAI_API_KEY_MIN_LENGTH = 48
+
+# LLM cleanup constants
+CLEANUP_TOKEN_BUFFER = 50  # Extra tokens for LLM to add punctuation/formatting
+
 # ============================================================================
 # Environment Variables and Configuration
 # ============================================================================
@@ -141,15 +151,18 @@ def load_settings() -> dict:
                 openai_key = settings.get("openaiApiKey") or OPENAI_API_KEY
 
                 # Check for duplicated API keys (common copy-paste error)
-                if groq_key and len(groq_key) > 60:
+                if groq_key and len(groq_key) > GROQ_API_KEY_MAX_LENGTH:
                     logger.warning(
                         f"⚠️  Groq API key looks duplicated (length: {len(groq_key)}). "
-                        "Expected ~56 chars. Please check your settings."
+                        f"Expected ~{GROQ_API_KEY_LENGTH} chars. Please check your settings."
                     )
                     # Try to fix by taking first half if it looks like a duplicate
-                    if len(groq_key) == 112 and groq_key[:56] == groq_key[56:]:
+                    if (
+                        len(groq_key) == GROQ_API_KEY_LENGTH * 2
+                        and groq_key[:GROQ_API_KEY_LENGTH] == groq_key[GROQ_API_KEY_LENGTH:]
+                    ):
                         logger.info("Auto-fixing duplicated API key...")
-                        groq_key = groq_key[:56]
+                        groq_key = groq_key[:GROQ_API_KEY_LENGTH]
 
                 if openai_key and len(openai_key) > 100:
                     logger.warning(
@@ -191,6 +204,9 @@ def load_settings() -> dict:
 # Process Management
 # ============================================================================
 
+# Global to store PID lock file handle (keeps lock alive)
+_pid_lock_file = None
+
 
 def is_process_running(pid: int) -> bool:
     """Check if a process with the given PID is running."""
@@ -203,35 +219,40 @@ def is_process_running(pid: int) -> bool:
 
 def acquire_pid_lock() -> bool:
     """
-    Acquire exclusive lock via PID file.
+    Acquire exclusive lock via PID file using fcntl.
     Returns True if lock acquired, False if another instance is running.
     """
-    if os.path.exists(PID_FILE):
-        try:
-            with open(PID_FILE, "r") as f:
-                old_pid = int(f.read().strip())
+    global _pid_lock_file
 
-            if is_process_running(old_pid):
-                logger.info(f"Backend already running (PID {old_pid})")
-                return False
-            else:
-                logger.info(f"Stale PID file found (PID {old_pid} not running), cleaning up")
-                os.remove(PID_FILE)
-                if os.path.exists(SOCKET_PATH):
-                    os.remove(SOCKET_PATH)
-        except (ValueError, IOError) as e:
-            logger.warning(f"Error reading PID file: {e}, cleaning up")
-            os.remove(PID_FILE)
+    try:
+        # Open in write mode
+        _pid_lock_file = open(PID_FILE, "w")
 
-    with open(PID_FILE, "w") as f:
-        f.write(str(os.getpid()))
+        # Try to acquire exclusive lock (non-blocking)
+        fcntl.flock(_pid_lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
 
-    return True
+        # We got the lock - write our PID
+        _pid_lock_file.write(str(os.getpid()))
+        _pid_lock_file.flush()
+
+        return True
+    except IOError:
+        # Lock already held by another process
+        if _pid_lock_file:
+            _pid_lock_file.close()
+            _pid_lock_file = None
+        logger.info("Backend already running (PID lock held)")
+        return False
 
 
 def release_pid_lock() -> None:
     """Release the PID file lock."""
+    global _pid_lock_file
     try:
+        if _pid_lock_file:
+            fcntl.flock(_pid_lock_file.fileno(), fcntl.LOCK_UN)
+            _pid_lock_file.close()
+            _pid_lock_file = None
         if os.path.exists(PID_FILE):
             os.remove(PID_FILE)
     except Exception as e:
@@ -407,7 +428,6 @@ class TextProcessor:
     PUNCTUATION_MAP = [
         ("question mark", "?"),
         ("exclamation mark", "!"),
-        ("exclamation point", "!"),
         ("open parenthesis", "("),
         ("close parenthesis", ")"),
         ("open paren", "("),
@@ -447,6 +467,19 @@ class TextProcessor:
         self.enable_punctuation = enable_punctuation
         self.replacements = replacements or {}
 
+        # Pre-compile punctuation patterns once (not on every process() call)
+        self._punctuation_patterns = []
+        if enable_punctuation:
+            for phrase, symbol in self.PUNCTUATION_MAP:
+                pattern = re.compile(r"\b" + re.escape(phrase) + r"\b", re.IGNORECASE)
+                self._punctuation_patterns.append((pattern, symbol))
+
+        # Pre-compile replacement patterns
+        self._replacement_patterns = []
+        for word, replacement in self.replacements.items():
+            pattern = re.compile(r"\b" + re.escape(word) + r"\b", re.IGNORECASE)
+            self._replacement_patterns.append((pattern, replacement))
+
     def process(self, text: str) -> str:
         """Apply all text transformations."""
         if not text:
@@ -465,19 +498,19 @@ class TextProcessor:
     def _apply_punctuation(self, text: str) -> str:
         """Convert spoken punctuation to symbols."""
         result = text
-
-        for phrase, symbol in self.PUNCTUATION_MAP:
-            pattern = re.compile(r"\b" + re.escape(phrase) + r"\b", re.IGNORECASE)
-            result = pattern.sub(symbol, result)
-
+        # Use pre-compiled patterns instead of compiling each time
+        for pattern, symbol in self._punctuation_patterns:
+            # Escape backslashes in replacement string for regex
+            escaped_symbol = symbol.replace("\\", "\\\\")
+            result = pattern.sub(escaped_symbol, result)
         result = self._clean_punctuation_spacing(result)
         return result
 
     def _apply_replacements(self, text: str) -> str:
         """Apply custom word replacements."""
         result = text
-        for word, replacement in self.replacements.items():
-            pattern = re.compile(r"\b" + re.escape(word) + r"\b", re.IGNORECASE)
+        # Use pre-compiled patterns
+        for pattern, replacement in self._replacement_patterns:
             result = pattern.sub(replacement, result)
         return result
 
@@ -745,7 +778,7 @@ async def cleanup_text(client: httpx.AsyncClient, text: str, api_key: str, provi
                     {"role": "user", "content": text},
                 ],
                 "temperature": 0.1,
-                "max_tokens": len(text) + 50,
+                "max_tokens": len(text) + CLEANUP_TOKEN_BUFFER,
             },
         )
         if response.status_code == 200:
@@ -817,7 +850,8 @@ class VoiceDictationServer:
     def __init__(self):
         self._running = True
         self.is_recording = False
-        self.audio_queue: queue.Queue[np.ndarray] = queue.Queue()
+        self._recording_lock = threading.Lock()
+        self.audio_queue: queue.Queue[np.ndarray] = queue.Queue(maxsize=1000)  # ~62s at 16kHz
         self.audio_data: list[np.ndarray] = []
 
         # Load settings
@@ -897,7 +931,15 @@ class VoiceDictationServer:
     def _audio_callback(self, indata: np.ndarray, frames: int, time_info: dict, status: int):
         """Callback for audio stream."""
         if self.is_recording:
-            self.audio_queue.put(indata.copy())
+            try:
+                self.audio_queue.put_nowait(indata.copy())
+            except queue.Full:
+                # Drop oldest frame to make room (prevents memory exhaustion)
+                try:
+                    self.audio_queue.get_nowait()
+                    self.audio_queue.put_nowait(indata.copy())
+                except queue.Empty:
+                    pass
 
     def _signal_handler(self, signum: int, frame):
         """Handle shutdown signals."""
@@ -929,24 +971,38 @@ class VoiceDictationServer:
 
     def _start_recording(self):
         """Start recording audio."""
-        self.is_recording = True
-        self.audio_data = []
+        with self._recording_lock:
+            if self.is_recording:
+                logger.debug("Already recording, ignoring start command")
+                return
 
-        self.waybar_state.recording()
-        self.audio_feedback.play_start()
+            self.is_recording = True
+            self.audio_data = []
 
-        # Reload settings in case they changed
-        settings = load_settings()
-        self.text_processor = TextProcessor(
-            enable_punctuation=settings.get("enableSpokenPunctuation", False),
-            replacements=settings.get("wordReplacements", {}),
-        )
+            self.waybar_state.recording()
+            self.audio_feedback.play_start()
 
-        logger.info("Recording started")
+            # Reload settings in case they changed
+            settings = load_settings()
+            self.text_processor = TextProcessor(
+                enable_punctuation=settings.get("enableSpokenPunctuation", False),
+                replacements=settings.get("wordReplacements", {}),
+            )
+
+            logger.info("Recording started")
 
     def _stop_recording(self):
         """Stop recording and process audio."""
-        self.waybar_state.transcribing()
+        # Use lock only for state check and initial transition
+        with self._recording_lock:
+            if not self.is_recording:
+                logger.debug("Not recording, ignoring stop command")
+                return
+
+            # Set waybar state immediately while still locked
+            self.waybar_state.transcribing()
+
+        # Release lock before audio feedback and processing
         self.audio_feedback.play_stop()
 
         start = time.perf_counter()
@@ -954,7 +1010,9 @@ class VoiceDictationServer:
         # Keep recording flag ON during the grace period so callback
         # continues queueing audio. This prevents cutting off the end.
         time.sleep(0.15)
-        self.is_recording = False
+
+        with self._recording_lock:
+            self.is_recording = False
 
         # Small additional delay to let any in-flight callback complete
         time.sleep(0.05)
