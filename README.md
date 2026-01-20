@@ -125,7 +125,7 @@ This will:
 1. Build the Tauri app
 2. Install `oflow` and `oflow-ctl` to `~/.local/bin/`
 3. Configure **Super+D** hotkey (toggle mode)
-4. Add Waybar status indicator
+4. Add Waybar status indicator with colored icons (green/red/yellow)
 5. Enable autostart on login
 6. Launch oflow
 
@@ -162,16 +162,34 @@ python test_system.py
 | `make dev` | Run in development mode with hot reload |
 | `make run` | Start backend server only |
 | `make stop` | Stop all oflow processes |
-| `make uninstall` | Remove oflow binary, Waybar config, and autostart |
+| `make uninstall` | Completely remove oflow (binaries, config, Waybar, hotkeys) |
+
+## Uninstall
+
+To completely remove oflow from your system:
+
+```bash
+cd oflow
+make uninstall
+```
+
+This removes:
+- All binaries from `~/.local/bin/` (oflow, oflow-ctl, oflow-toggle)
+- Waybar module and CSS styling
+- Hyprland hotkey binding (Super+D)
+- Autostart entry
+- Settings directory (`~/.oflow/`)
+- Runtime files and sockets
 
 ## Waybar Integration
 
 oflow displays a clickable microphone icon in Waybar:
 - `󰍬` idle (green) — click to open settings
-- `󰍬` recording (red)
-- `󰍬` transcribing (yellow)
+- `󰍮` recording (red) — actively listening
+- `󰦖` transcribing (yellow) — processing audio
+- `󰍭` error (red with slash) — something went wrong
 
-The icon is automatically configured during `make install`.
+The icon and CSS styling are automatically configured during `make install`.
 
 ## Configuration
 

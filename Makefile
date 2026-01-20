@@ -1,4 +1,4 @@
-.PHONY: help run stop dev build build-appimage build-sidecar test test-unit test-integration test-all format lint clean install install-appimage uninstall setup-backend setup-frontend setup-waybar setup-autostart setup-hotkey install-oflow-ctl
+.PHONY: help run stop dev build build-appimage build-sidecar test test-unit test-integration test-all format lint clean install install-appimage uninstall setup-backend setup-frontend setup-waybar setup-waybar-css setup-autostart setup-hotkey install-oflow-ctl
 
 SIDECAR_NAME := oflow-backend-x86_64-unknown-linux-gnu
 
@@ -106,12 +106,41 @@ lint:
 	@echo "Linting code..."
 	@ruff check .
 
-install: build setup-hotkey
+install: build setup-hotkey setup-waybar setup-waybar-css setup-autostart
 	@echo "Installing oflow..."
 	@mkdir -p ~/.local/bin
 	@cp oflow-ui/src-tauri/target/release/oflow-ui ~/.local/bin/oflow
 	@chmod +x ~/.local/bin/oflow
-	@echo "Note: Backend needs to be started separately with 'make run'"
+	@echo '#!/bin/bash' > ~/.local/bin/oflow-toggle
+	@echo 'OFLOW_BIN="$$HOME/.local/bin/oflow"' >> ~/.local/bin/oflow-toggle
+	@echo 'WIN_CLASS="oflow-ui"' >> ~/.local/bin/oflow-toggle
+	@echo 'ADDR=$$(hyprctl clients -j | jq -r ".[] | select(.class == \"$$WIN_CLASS\") | .address" | head -1)' >> ~/.local/bin/oflow-toggle
+	@echo 'if [ -n "$$ADDR" ] && [ "$$ADDR" != "null" ]; then' >> ~/.local/bin/oflow-toggle
+	@echo '    WS=$$(hyprctl clients -j | jq -r ".[] | select(.address == \"$$ADDR\") | .workspace.name")' >> ~/.local/bin/oflow-toggle
+	@echo '    if [[ "$$WS" == special:* ]]; then' >> ~/.local/bin/oflow-toggle
+	@echo '        hyprctl dispatch movetoworkspacesilent e+0,address:$$ADDR' >> ~/.local/bin/oflow-toggle
+	@echo '        hyprctl dispatch focuswindow address:$$ADDR' >> ~/.local/bin/oflow-toggle
+	@echo '    else' >> ~/.local/bin/oflow-toggle
+	@echo '        FOCUSED=$$(hyprctl activewindow -j | jq -r ".address" 2>/dev/null)' >> ~/.local/bin/oflow-toggle
+	@echo '        if [ "$$ADDR" = "$$FOCUSED" ]; then' >> ~/.local/bin/oflow-toggle
+	@echo '            hyprctl dispatch movetoworkspacesilent special:hidden,address:$$ADDR' >> ~/.local/bin/oflow-toggle
+	@echo '        else' >> ~/.local/bin/oflow-toggle
+	@echo '            hyprctl dispatch focuswindow address:$$ADDR' >> ~/.local/bin/oflow-toggle
+	@echo '        fi' >> ~/.local/bin/oflow-toggle
+	@echo '    fi' >> ~/.local/bin/oflow-toggle
+	@echo 'else' >> ~/.local/bin/oflow-toggle
+	@echo '    "$$OFLOW_BIN" &' >> ~/.local/bin/oflow-toggle
+	@echo 'fi' >> ~/.local/bin/oflow-toggle
+	@chmod +x ~/.local/bin/oflow-toggle
+	@echo ""
+	@echo "Installation complete!"
+	@echo "  - Binary: ~/.local/bin/oflow"
+	@echo "  - UI auto-starts backend when launched"
+	@echo "  - Click the mic icon in Waybar to open settings"
+	@echo "  - Press Super+D to start recording, press again to stop"
+	@echo ""
+	@echo "Starting oflow..."
+	@~/.local/bin/oflow-toggle
 
 install-appimage: build-appimage setup-hotkey
 	@echo "Installing oflow AppImage..."
@@ -146,6 +175,7 @@ install-appimage: build-appimage setup-hotkey
 	@echo 'fi' >> ~/.local/bin/oflow-toggle
 	@chmod +x ~/.local/bin/oflow-toggle
 	@$(MAKE) setup-waybar
+	@$(MAKE) setup-waybar-css
 	@$(MAKE) setup-autostart
 	@echo ""
 	@echo "Installation complete!"
@@ -173,6 +203,23 @@ setup-waybar:
 	else \
 		echo "Waybar config not found at ~/.config/waybar/config.jsonc"; \
 	fi
+
+setup-waybar-css:
+	@echo "Setting up Waybar CSS styling..."
+	@if [ -f ~/.config/waybar/style.css ]; then \
+		if ! grep -q "#custom-oflow" ~/.config/waybar/style.css; then \
+			echo "" >> ~/.config/waybar/style.css; \
+			cat waybar-oflow-style.css >> ~/.config/waybar/style.css; \
+			echo "Waybar CSS styling added"; \
+		else \
+			echo "Waybar CSS already configured"; \
+		fi \
+	else \
+		echo "Creating Waybar style.css with oflow styles..."; \
+		mkdir -p ~/.config/waybar; \
+		cat waybar-oflow-style.css > ~/.config/waybar/style.css; \
+	fi
+	@pkill -SIGUSR2 waybar 2>/dev/null || echo "Waybar will apply styles on next restart"
 
 setup-autostart:
 	@echo "Setting up autostart..."
@@ -229,14 +276,35 @@ setup-hotkey: install-oflow-ctl
 
 uninstall:
 	@echo "Uninstalling oflow..."
+	@echo "  Removing binaries..."
 	@rm -f ~/.local/bin/oflow ~/.local/bin/oflow-toggle ~/.local/bin/oflow-ctl
+	@echo "  Removing autostart entry..."
 	@rm -f ~/.config/autostart/oflow.desktop
+	@echo "  Removing Hyprland hotkey..."
 	@if [ -f ~/.config/hypr/bindings.conf ]; then \
 		sed -i '/# Oflow voice dictation/,/^$$/d' ~/.config/hypr/bindings.conf; \
 		hyprctl reload 2>/dev/null || true; \
 	fi
+	@echo "  Removing Waybar module..."
+	@if [ -f ~/.config/waybar/config.jsonc ]; then \
+		sed -i '/"custom\/oflow"/,/^  }/d' ~/.config/waybar/config.jsonc 2>/dev/null || true; \
+		sed -i 's/, "custom\/spacer", "custom\/oflow"//g' ~/.config/waybar/config.jsonc 2>/dev/null || true; \
+		sed -i 's/, "custom\/oflow"//g' ~/.config/waybar/config.jsonc 2>/dev/null || true; \
+	fi
+	@echo "  Removing Waybar CSS..."
+	@if [ -f ~/.config/waybar/style.css ]; then \
+		sed -i '/\/\* Oflow voice dictation/,/^}$$/d' ~/.config/waybar/style.css 2>/dev/null || true; \
+		sed -i '/#custom-oflow/,/^}$$/d' ~/.config/waybar/style.css 2>/dev/null || true; \
+	fi
+	@pkill -SIGUSR2 waybar 2>/dev/null || true
+	@echo "  Removing runtime files..."
+	@rm -rf $$XDG_RUNTIME_DIR/oflow 2>/dev/null || true
+	@rm -f /tmp/oflow.pid /tmp/voice-dictation.sock 2>/dev/null || true
+	@echo "  Removing settings..."
+	@rm -rf ~/.oflow 2>/dev/null || true
 	@$(MAKE) stop
-	@echo "Uninstall complete"
+	@echo ""
+	@echo "Uninstall complete! oflow has been removed from your system."
 
 clean:
 	@echo "Cleaning cache files..."
