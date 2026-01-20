@@ -1,0 +1,51 @@
+# Maintainer: CryptoB1 <cryptob1@users.noreply.github.com>
+pkgname=oflow
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="Voice-to-text for Omarchy - like Wispr Flow, but open source and local-first"
+arch=('x86_64')
+url="https://github.com/CryptoB1/oflow"
+license=('MIT')
+depends=('fuse2' 'hicolor-icon-theme' 'wtype' 'webkit2gtk-4.1')
+options=(!strip)
+
+_appimage="oflow_${pkgver}_amd64.AppImage"
+source=("${_appimage}::https://github.com/CryptoB1/oflow/releases/download/v${pkgver}/oflow_${pkgver}_amd64.AppImage"
+        "LICENSE::https://raw.githubusercontent.com/CryptoB1/oflow/v${pkgver}/LICENSE")
+noextract=("${_appimage}")
+sha256sums=('b03d38ac6f63a62c22c82cd70999053065609b6c20588197f802b764e92a729e'
+            'SKIP')
+
+prepare() {
+    chmod +x "${_appimage}"
+    ./"${_appimage}" --appimage-extract
+}
+
+build() {
+    # Fix desktop file to use installed path
+    sed -i "s|Exec=oflow|Exec=/usr/bin/oflow|g" squashfs-root/oflow.desktop
+    
+    # Fix permissions
+    chmod -R a-x+rX squashfs-root/usr 2>/dev/null || true
+}
+
+package() {
+    # Install AppImage to /opt
+    install -Dm755 "${srcdir}/${_appimage}" "${pkgdir}/opt/${pkgname}/${pkgname}.AppImage"
+    
+    # Symlink to /usr/bin
+    install -dm755 "${pkgdir}/usr/bin"
+    ln -s "/opt/${pkgname}/${pkgname}.AppImage" "${pkgdir}/usr/bin/${pkgname}"
+    
+    # Desktop file
+    install -Dm644 "${srcdir}/squashfs-root/oflow.desktop" \
+        "${pkgdir}/usr/share/applications/${pkgname}.desktop"
+    
+    # Icons
+    if [[ -d "${srcdir}/squashfs-root/usr/share/icons" ]]; then
+        cp -a "${srcdir}/squashfs-root/usr/share/icons" "${pkgdir}/usr/share/"
+    fi
+    
+    # License
+    install -Dm644 "${srcdir}/LICENSE" "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
+}

@@ -1,0 +1,19 @@
+pkgbase = oflow
+	pkgdesc = Voice-to-text for Omarchy - like Wispr Flow, but open source and local-first
+	pkgver = 0.1.0
+	pkgrel = 1
+	url = https://github.com/CryptoB1/oflow
+	arch = x86_64
+	license = MIT
+	depends = fuse2
+	depends = hicolor-icon-theme
+	depends = wtype
+	depends = webkit2gtk-4.1
+	noextract = oflow_0.1.0_amd64.AppImage
+	options = !strip
+	source = oflow_0.1.0_amd64.AppImage::https://github.com/CryptoB1/oflow/releases/download/v0.1.0/oflow_0.1.0_amd64.AppImage
+	source = LICENSE::https://raw.githubusercontent.com/CryptoB1/oflow/v0.1.0/LICENSE
+	sha256sums = b03d38ac6f63a62c22c82cd70999053065609b6c20588197f802b764e92a729e
+	sha256sums = SKIP
+
+pkgname = oflow
