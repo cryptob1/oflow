@@ -79,8 +79,10 @@ run:
 
 stop:
 	@echo "Stopping Oflow..."
-	@pkill -f "python.*oflow.py" 2>/dev/null || true
-	@pkill -f "oflow-ui" 2>/dev/null || true
+	@-pkill -f "python.*oflow.py" 2>/dev/null || true
+	@-pkill -f "oflow-ui" 2>/dev/null || true
+	@-pkill -f "oflow-backend" 2>/dev/null || true
+	@-pkill -f "\.local/bin/oflow" 2>/dev/null || true
 	@rm -f /tmp/oflow.pid /tmp/voice-dictation.sock 2>/dev/null || true
 	@echo "Stopped"
 
@@ -190,17 +192,10 @@ install-appimage: build-appimage setup-hotkey
 setup-waybar:
 	@echo "Configuring Waybar..."
 	@if [ -f ~/.config/waybar/config.jsonc ]; then \
-		if ! grep -q '"custom/oflow"' ~/.config/waybar/config.jsonc; then \
+		if ! jq -e '."custom/oflow"' ~/.config/waybar/config.jsonc >/dev/null 2>&1; then \
 			echo "Adding oflow module to Waybar config..."; \
-			if grep -q '"modules-left"' ~/.config/waybar/config.jsonc; then \
-				sed -i 's/"modules-left": \[\([^]]*\)\]/"modules-left": [\1, "custom\/oflow"]/' ~/.config/waybar/config.jsonc; \
-			elif grep -q '"modules-center"' ~/.config/waybar/config.jsonc; then \
-				sed -i 's/"modules-center": \[\([^]]*\)\]/"modules-center": [\1, "custom\/oflow"]/' ~/.config/waybar/config.jsonc; \
-			elif grep -q '"modules-right"' ~/.config/waybar/config.jsonc; then \
-				sed -i 's/"modules-right": \[\([^]]*\)\]/"modules-right": ["custom\/oflow", \1]/' ~/.config/waybar/config.jsonc; \
-			fi; \
-			echo "Adding oflow module definition..."; \
-			sed -i '/^}/i \  "custom/oflow": {\n    "exec": "cat $$XDG_RUNTIME_DIR/oflow/state 2>/dev/null || echo '"'"'{\"text\":\"󰍬\",\"class\":\"idle\",\"tooltip\":\"oflow not running\"}'"'"'",\n    "return-type": "json",\n    "interval": 1,\n    "format": "{}",\n    "tooltip": true,\n    "on-click": "~/.local/bin/oflow-toggle"\n  },' ~/.config/waybar/config.jsonc; \
+			jq '."modules-left" += ["custom/oflow"] | ."custom/oflow" = {"exec": "cat $$XDG_RUNTIME_DIR/oflow/state 2>/dev/null || echo '"'"'{\"text\":\"󰍬\",\"class\":\"idle\",\"tooltip\":\"oflow not running\"}'"'"'", "return-type": "json", "interval": 1, "format": "{}", "tooltip": true, "on-click": "~/.local/bin/oflow-toggle"}' ~/.config/waybar/config.jsonc > /tmp/waybar-oflow-config.jsonc && \
+			mv /tmp/waybar-oflow-config.jsonc ~/.config/waybar/config.jsonc; \
 			pkill -SIGUSR2 waybar 2>/dev/null || true; \
 			echo "Waybar module added"; \
 		else \
@@ -292,10 +287,9 @@ uninstall:
 		hyprctl reload 2>/dev/null || true; \
 	fi
 	@echo "  Removing Waybar module..."
-	@if [ -f ~/.config/waybar/config.jsonc ]; then \
-		sed -i 's/, "custom\/oflow"//g' ~/.config/waybar/config.jsonc 2>/dev/null || true; \
-		sed -i 's/"custom\/oflow", //g' ~/.config/waybar/config.jsonc 2>/dev/null || true; \
-		sed -i '/"custom\/oflow": {/,/^  },/d' ~/.config/waybar/config.jsonc 2>/dev/null || true; \
+	@if [ -f ~/.config/waybar/config.jsonc ] && jq -e '."custom/oflow"' ~/.config/waybar/config.jsonc >/dev/null 2>&1; then \
+		jq 'del(."custom/oflow") | ."modules-left" = (."modules-left" | map(select(. != "custom/oflow"))) | ."modules-center" = (."modules-center" // [] | map(select(. != "custom/oflow"))) | ."modules-right" = (."modules-right" // [] | map(select(. != "custom/oflow")))' ~/.config/waybar/config.jsonc > /tmp/waybar-oflow-uninstall.jsonc && \
+		mv /tmp/waybar-oflow-uninstall.jsonc ~/.config/waybar/config.jsonc; \
 	fi
 	@echo "  Removing Waybar CSS..."
 	@if [ -f ~/.config/waybar/style.css ]; then \
