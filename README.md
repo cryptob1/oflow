@@ -4,8 +4,6 @@
 
 Press a key, speak, press again — your words appear wherever you're typing.
 
-![Settings](docs/settings.png)
-
 ## Features
 
 - **Instant transcription** — Groq Whisper runs at 200x realtime (~0.5s latency)
