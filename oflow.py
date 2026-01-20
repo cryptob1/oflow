@@ -97,7 +97,6 @@ GROQ_CHAT_URL = "https://api.groq.com/openai/v1/chat/completions"
 # API key validation constants
 GROQ_API_KEY_LENGTH = 56
 GROQ_API_KEY_MAX_LENGTH = 60  # Warn if longer (likely duplicated)
-OPENAI_API_KEY_MIN_LENGTH = 48
 
 # LLM cleanup constants
 CLEANUP_TOKEN_BUFFER = 50  # Extra tokens for LLM to add punctuation/formatting
@@ -206,15 +205,6 @@ def load_settings() -> dict:
 
 # Global to store PID lock file handle (keeps lock alive)
 _pid_lock_file = None
-
-
-def is_process_running(pid: int) -> bool:
-    """Check if a process with the given PID is running."""
-    try:
-        os.kill(pid, 0)
-        return True
-    except (OSError, ProcessLookupError):
-        return False
 
 
 def acquire_pid_lock() -> bool:
@@ -851,7 +841,7 @@ class VoiceDictationServer:
         self._running = True
         self.is_recording = False
         self._recording_lock = threading.Lock()
-        self.audio_queue: queue.Queue[np.ndarray] = queue.Queue(maxsize=1000)  # ~62s at 16kHz
+        self.audio_queue: queue.Queue[np.ndarray] = queue.Queue()  # Unbounded queue
         self.audio_data: list[np.ndarray] = []
 
         # Load settings
@@ -931,15 +921,7 @@ class VoiceDictationServer:
     def _audio_callback(self, indata: np.ndarray, frames: int, time_info: dict, status: int):
         """Callback for audio stream."""
         if self.is_recording:
-            try:
-                self.audio_queue.put_nowait(indata.copy())
-            except queue.Full:
-                # Drop oldest frame to make room (prevents memory exhaustion)
-                try:
-                    self.audio_queue.get_nowait()
-                    self.audio_queue.put_nowait(indata.copy())
-                except queue.Empty:
-                    pass
+            self.audio_queue.put_nowait(indata.copy())
 
     def _signal_handler(self, signum: int, frame):
         """Handle shutdown signals."""
@@ -1211,9 +1193,32 @@ def validate_configuration() -> None:
 # Main Entry Point
 # ============================================================================
 
+# Global server reference for stdin shutdown
+_server: VoiceDictationServer | None = None
+
+
+def stdin_listener() -> None:
+    """Listen for shutdown command from Tauri sidecar (stdin)."""
+    global _server
+    while True:
+        try:
+            line = sys.stdin.readline()
+            if not line:  # EOF
+                break
+            cmd = line.strip().lower()
+            if cmd == "shutdown":
+                logger.info("Received shutdown command from Tauri")
+                if _server:
+                    _server._running = False
+                break
+        except (EOFError, OSError):
+            break
+
 
 def main() -> None:
     """Main entry point for Oflow."""
+    global _server
+
     if len(sys.argv) > 1:
         cmd = sys.argv[1]
 
@@ -1242,8 +1247,15 @@ def main() -> None:
             print(f"Configuration error: {e}", file=sys.stderr)
             sys.exit(1)
 
+        # Start stdin listener for Tauri sidecar shutdown
+        stdin_thread = threading.Thread(target=stdin_listener, daemon=True)
+        stdin_thread.start()
+
         try:
-            VoiceDictationServer().run()
+            _server = VoiceDictationServer()
+            logger.info("Backend ready")  # Signal to Tauri that we're ready
+            sys.stdout.flush()
+            _server.run()
         except KeyboardInterrupt:
             logger.info("Shutting down...")
             sys.exit(0)

@@ -1,15 +1,18 @@
-.PHONY: help run stop dev build build-combined test test-unit test-integration test-all format lint clean install install-combined uninstall setup-backend setup-frontend setup-waybar setup-autostart setup-hotkey install-oflow-ctl
+.PHONY: help run stop dev build build-appimage build-sidecar test test-unit test-integration test-all format lint clean install install-appimage uninstall setup-backend setup-frontend setup-waybar setup-autostart setup-hotkey install-oflow-ctl
+
+SIDECAR_NAME := oflow-backend-x86_64-unknown-linux-gnu
 
 help:
 	@echo "Oflow - Voice Dictation for Hyprland/Wayland"
 	@echo ""
 	@echo "Available targets:"
 	@echo "  make install         - Full install: build, install binary, setup Waybar & autostart"
-	@echo "  make install-combined- Install combined binary with embedded backend"
+	@echo "  make install-appimage- Build and install bundled AppImage (includes Python backend)"
 	@echo "  make uninstall       - Remove oflow binary, Waybar config, and autostart"
 	@echo "  make dev             - Run in development mode (hot reload)"
-	@echo "  make build           - Build release binary only"
-	@echo "  make build-combined  - Build combined binary with embedded backend"
+	@echo "  make build           - Build release binary only (requires separate backend)"
+	@echo "  make build-appimage  - Build bundled AppImage with embedded Python backend"
+	@echo "  make build-sidecar   - Build PyInstaller sidecar binary only"
 	@echo "  make run             - Start the backend server only"
 	@echo "  make stop            - Stop all oflow processes"
 	@echo "  make test            - Run unit tests (fast, no API needed)"
@@ -44,16 +47,31 @@ build:
 	fi
 	@cd oflow-ui && npm run tauri build
 
-build-combined:
-	@echo "Building combined Oflow binary with embedded backend..."
-	@python3 scripts/build-combined.py
-	@if [ ! -d "oflow-ui/node_modules" ]; then \
-		echo "Installing npm dependencies..."; \
-		cd oflow-ui && npm install; \
-	fi
-	@cd oflow-ui && npm run tauri build
-	@echo "Combined binary build complete!"
-	@echo "Binary location: oflow-ui/src-tauri/target/release/oflow-ui"
+build-sidecar: setup-backend
+	@echo "Building Python sidecar with PyInstaller..."
+	@mkdir -p oflow-ui/src-tauri/bin
+	@uv pip install -q pyinstaller --python .venv/bin/python
+	@.venv/bin/pyinstaller \
+		--onefile \
+		--clean \
+		--strip \
+		--name $(SIDECAR_NAME) \
+		--distpath oflow-ui/src-tauri/bin \
+		--specpath /tmp \
+		--hidden-import sounddevice \
+		--hidden-import _sounddevice_data \
+		--collect-all sounddevice \
+		oflow.py
+	@echo "Sidecar built: oflow-ui/src-tauri/bin/$(SIDECAR_NAME)"
+
+build-appimage: build-sidecar setup-frontend
+	@echo "Building AppImage with embedded Python backend..."
+	@# NO_STRIP=1 needed for Arch - linuxdeploy's old strip can't handle new .relr.dyn sections
+	@cd oflow-ui && NO_STRIP=1 npm run tauri build
+	@echo ""
+	@echo "AppImage built successfully!"
+	@echo "Location: oflow-ui/src-tauri/target/release/bundle/appimage/"
+	@ls -lh oflow-ui/src-tauri/target/release/bundle/appimage/*.AppImage 2>/dev/null || true
 
 run:
 	@echo "Starting Oflow backend..."
@@ -95,20 +113,20 @@ install: build setup-hotkey
 	@chmod +x ~/.local/bin/oflow
 	@echo "Note: Backend needs to be started separately with 'make run'"
 
-install-combined: build-combined setup-hotkey
-	@echo "Installing combined oflow with embedded backend..."
+install-appimage: build-appimage setup-hotkey
+	@echo "Installing oflow AppImage..."
 	@mkdir -p ~/.local/bin
-	@cp oflow-ui/src-tauri/target/release/oflow-ui ~/.local/bin/oflow
-	@chmod +x ~/.local/bin/oflow
-	@# Update autostart to use the new binary
-	@sed -i 's|Exec=.*|Exec=$$HOME/.local/bin/oflow|' ~/.config/autostart/oflow.desktop
-	@echo "Combined installation complete!"
-	@echo "The backend is now embedded - no separate backend process needed!"
-	@# Create toggle script for Waybar
+	@APPIMAGE=$$(ls oflow-ui/src-tauri/target/release/bundle/appimage/*.AppImage 2>/dev/null | head -1); \
+	if [ -n "$$APPIMAGE" ]; then \
+		cp "$$APPIMAGE" ~/.local/bin/oflow; \
+		chmod +x ~/.local/bin/oflow; \
+	else \
+		echo "ERROR: AppImage not found!"; \
+		exit 1; \
+	fi
 	@echo '#!/bin/bash' > ~/.local/bin/oflow-toggle
-	@echo '# oflow-toggle: Toggle oflow UI window visibility' >> ~/.local/bin/oflow-toggle
 	@echo 'OFLOW_BIN="$$HOME/.local/bin/oflow"' >> ~/.local/bin/oflow-toggle
-	@echo 'WIN_CLASS="oflow-ui"' >> ~/.local/bin/oflow-toggle
+	@echo 'WIN_CLASS="oflow"' >> ~/.local/bin/oflow-toggle
 	@echo 'ADDR=$$(hyprctl clients -j | jq -r ".[] | select(.class == \"$$WIN_CLASS\") | .address" | head -1)' >> ~/.local/bin/oflow-toggle
 	@echo 'if [ -n "$$ADDR" ] && [ "$$ADDR" != "null" ]; then' >> ~/.local/bin/oflow-toggle
 	@echo '    WS=$$(hyprctl clients -j | jq -r ".[] | select(.address == \"$$ADDR\") | .workspace.name")' >> ~/.local/bin/oflow-toggle
@@ -131,9 +149,10 @@ install-combined: build-combined setup-hotkey
 	@$(MAKE) setup-autostart
 	@echo ""
 	@echo "Installation complete!"
-	@echo "  - Binary: ~/.local/bin/oflow"
-	@echo "  - Click the ○ icon in Waybar to open settings"
-	@echo "  - Press Super+D to start recording, press again to stop and transcribe"
+	@echo "  - AppImage: ~/.local/bin/oflow"
+	@echo "  - Backend is embedded - no separate process needed"
+	@echo "  - Click the mic icon in Waybar to open settings"
+	@echo "  - Press Super+D to start recording, press again to stop"
 	@echo ""
 	@echo "Starting oflow..."
 	@~/.local/bin/oflow-toggle

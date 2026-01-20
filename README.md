@@ -157,6 +157,8 @@ python test_system.py
 |---------|-------------|
 | `make install` | Full install: build app, install to ~/.local/bin, configure Waybar, enable autostart |
 | `make build` | Build release binary only |
+| `make build-appimage` | Build self-contained AppImage with bundled Python backend |
+| `make install-appimage` | Install AppImage to ~/.local/bin |
 | `make dev` | Run in development mode with hot reload |
 | `make run` | Start backend server only |
 | `make stop` | Stop all oflow processes |

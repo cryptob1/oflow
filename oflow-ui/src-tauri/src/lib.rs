@@ -264,7 +264,6 @@ async fn check_backend_status() -> Result<bool, String> {
     Ok(is_backend_running().await)
 }
 
-/// Starts the development backend (fallback when embedded backend not available).
 fn start_development_backend() {
     let oflow_dir = std::env::var("OFLOW_DIR")
         .unwrap_or_else(|_| dirs::home_dir()
@@ -286,6 +285,33 @@ fn start_development_backend() {
     } else {
         log::error!("Development backend not found at {} or {}", python_path, script_path);
     }
+}
+
+fn start_sidecar_backend(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
+    let sidecar = app.shell().sidecar("oflow-backend")?;
+    let (mut rx, _child) = sidecar.spawn()?;
+    
+    tauri::async_runtime::spawn(async move {
+        use tauri_plugin_shell::process::CommandEvent;
+        while let Some(event) = rx.recv().await {
+            match event {
+                CommandEvent::Stdout(line) => {
+                    log::info!("[backend] {}", String::from_utf8_lossy(&line));
+                }
+                CommandEvent::Stderr(line) => {
+                    log::warn!("[backend] {}", String::from_utf8_lossy(&line));
+                }
+                CommandEvent::Terminated(payload) => {
+                    log::info!("[backend] Terminated with code: {:?}", payload.code);
+                    break;
+                }
+                _ => {}
+            }
+        }
+    });
+    
+    log::info!("Sidecar backend started");
+    Ok(())
 }
 
 /// Shows the main window.
@@ -495,27 +521,10 @@ pub fn run() {
                 }
             });
 
-            // Start Python backend if not already running
             let socket_path = std::path::Path::new("/tmp/voice-dictation.sock");
             if !socket_path.exists() {
-                // Try to start embedded backend first, fallback to development backend
-                if let Ok(resource_path) = app.path().resource_dir() {
-                    let backend_script = resource_path.join("oflow-backend.sh");
-                    
-                    if backend_script.exists() {
-                        log::info!("Starting embedded backend from {:?}", backend_script);
-                        match std::process::Command::new(&backend_script)
-                            .spawn()
-                        {
-                            Ok(_) => log::info!("Embedded backend started"),
-                            Err(e) => log::error!("Failed to start embedded backend: {}", e),
-                        }
-                    } else {
-                        log::warn!("Embedded backend script not found at {:?}", backend_script);
-                        start_development_backend();
-                    }
-                } else {
-                    log::warn!("Could not get resource directory, trying development backend");
+                if let Err(e) = start_sidecar_backend(app.handle()) {
+                    log::warn!("Sidecar backend failed: {}, trying development backend", e);
                     start_development_backend();
                 }
             } else {

@@ -6,24 +6,56 @@ on:
       - 'v*'
 
 jobs:
-  build:
-    runs-on: ubuntu-latest
+  build-linux:
+    runs-on: ubuntu-22.04
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install dependencies
+      - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            libportaudio2 \
+            portaudio19-dev
 
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: 20
 
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyinstaller
+          pip install httpx numpy sounddevice python-dotenv
+
+      - name: Build Python sidecar
+        run: |
+          mkdir -p oflow-ui/src-tauri/bin
+          pyinstaller \
+            --onefile \
+            --clean \
+            --strip \
+            --name oflow-backend-x86_64-unknown-linux-gnu \
+            --distpath oflow-ui/src-tauri/bin \
+            --specpath /tmp \
+            --hidden-import sounddevice \
+            --hidden-import _sounddevice_data \
+            --collect-all sounddevice \
+            oflow.py
 
       - name: Install frontend dependencies
         working-directory: oflow-ui
@@ -40,12 +72,24 @@ jobs:
           releaseBody: |
             ## Install
 
-            Download `oflow_*_amd64.AppImage`, then:
+            ### Requirements
+            - **wtype** - for typing text into windows (Wayland)
+            
+            ```bash
+            sudo pacman -S wtype  # Arch/Omarchy
+            ```
+
+            ### Download & Run
             ```bash
             chmod +x oflow_*_amd64.AppImage
             ./oflow_*_amd64.AppImage
             ```
 
-            See [README](https://github.com/CryptoB1/oflow#setup) for setup instructions.
+            ### Setup
+            1. Get a free Groq API key: https://console.groq.com/keys
+            2. Click the microphone icon → Settings → paste your key
+            3. Press **Super+D** to start recording, press again to stop
+
+            See [README](https://github.com/CryptoB1/oflow#readme) for full documentation.
           releaseDraft: false
           prerelease: false

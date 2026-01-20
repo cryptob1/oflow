@@ -33,6 +33,17 @@
       ]
     },
     "shell:allow-execute",
+    "shell:allow-spawn",
+    "shell:allow-kill",
+    {
+      "identifier": "shell:allow-spawn",
+      "allow": [
+        {
+          "name": "bin/oflow-backend",
+          "sidecar": true
+        }
+      ]
+    },
     "global-shortcut:allow-register",
     "global-shortcut:allow-unregister",
     "global-shortcut:allow-is-registered"
