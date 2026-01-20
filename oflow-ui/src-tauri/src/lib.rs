@@ -416,6 +416,13 @@ pub fn run() {
     let shortcut_initial = initial_shortcut.clone();
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            // Another instance was launched - focus existing window
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
+        }))
         .setup(move |app| {
             // Initialize plugins
             if cfg!(debug_assertions) {
