@@ -12,7 +12,7 @@ Audio Recording → Validation → Whisper STT → LLM Cleanup → wtype Output
 
 ### Backend (`oflow.py`)
 
-A single Python file (~700 lines) that handles:
+A single Python file (~1200 lines) that handles:
 
 1. **Audio Recording** - Uses `sounddevice` to capture audio from the default microphone
 2. **Audio Validation** - Checks duration and amplitude before sending to API
@@ -28,18 +28,22 @@ A single Python file (~700 lines) that handles:
 
 ### Frontend (`oflow-ui/`)
 
-A Tauri app providing:
+A Tauri v2 app (Rust + React) providing:
 - Settings UI (API keys, provider selection)
 - Transcript history viewer
 - System tray integration
+- Single-instance enforcement
+- Auto-starts backend if not running
 
 ### Waybar Integration
 
 State file at `$XDG_RUNTIME_DIR/oflow/state` provides real-time status:
-- `idle` - Ready to record
-- `recording` - Currently recording
-- `transcribing` - Processing audio
-- `error` - Something went wrong
+- `idle` (green) - Ready to record
+- `recording` (red) - Currently recording
+- `transcribing` (yellow) - Processing audio
+- `error` (red) - Something went wrong
+
+The oflow icon appears in Waybar center (next to clock) and is configured automatically by `make install`.
 
 ## Data Flow
 
