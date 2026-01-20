@@ -210,6 +210,44 @@ Settings are stored in `~/.oflow/settings.json`:
 }
 ```
 
+## Hotkey Configuration
+
+### Default: Toggle Mode
+
+**Super+D** — Press to start recording, press again to stop and transcribe.
+
+The hotkey is configured automatically during `make install` in `~/.config/hypr/bindings.conf`:
+
+```ini
+bind = SUPER, D, exec, ~/.local/bin/oflow-ctl toggle
+```
+
+### Alternative: Push-to-Talk Mode
+
+If you prefer hold-to-record instead of toggle, edit `~/.config/hypr/bindings.conf`:
+
+```ini
+# Push-to-talk: hold to record, release to stop
+bind = SUPER, D, exec, ~/.local/bin/oflow-ctl start
+bindr = SUPER, D, exec, ~/.local/bin/oflow-ctl stop
+```
+
+Then reload: `hyprctl reload`
+
+### Changing the Hotkey
+
+Edit `~/.config/hypr/bindings.conf`, change `SUPER, D` to your preferred key (e.g., `SUPER, I`), then run `hyprctl reload`.
+
+## Architecture
+
+```
+Audio Recording → Validation → Whisper STT → LLM Cleanup → wtype Output
+```
+
+- **Backend** (`oflow.py`) — Single Python file (~1200 lines) handling audio capture, transcription, and text output
+- **Frontend** (`oflow-ui/`) — Tauri v2 app (Rust + React) for settings UI and system tray
+- **IPC** — Unix socket at `/tmp/voice-dictation.sock` for start/stop/toggle commands
+
 ## Troubleshooting
 
 **Run the test script to diagnose issues:**
@@ -222,9 +260,15 @@ python3 test_system.py
 hyprctl reload
 ```
 
-**Backend issues?**
+**Backend not responding?**
 ```bash
 rm -f /tmp/oflow.pid /tmp/voice-dictation.sock
+~/.local/bin/oflow-toggle
+```
+
+**Check if binding is configured:**
+```bash
+grep oflow ~/.config/hypr/bindings.conf
 ```
 
 **Enable debug logging:**
