@@ -528,15 +528,18 @@ pub fn run() {
                 }
             });
 
-            let socket_path = std::path::Path::new("/tmp/voice-dictation.sock");
-            if !socket_path.exists() {
-                if let Err(e) = start_sidecar_backend(app.handle()) {
-                    log::warn!("Sidecar backend failed: {}, trying development backend", e);
-                    start_development_backend();
+            let app_handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                if !is_backend_running().await {
+                    log::info!("Backend not running, starting...");
+                    if let Err(e) = start_sidecar_backend(&app_handle) {
+                        log::warn!("Sidecar backend failed: {}, trying development backend", e);
+                        start_development_backend();
+                    }
+                } else {
+                    log::info!("Backend already running");
                 }
-            } else {
-                log::info!("Backend already running (socket exists)");
-            }
+            });
 
             Ok(())
         })

@@ -66,11 +66,15 @@ pub async fn send_command(command: &str) -> Result<(), SocketError> {
 }
 
 /// Checks if the backend is running by attempting to connect to the socket.
-///
-/// # Returns
-///
-/// Returns `true` if the socket exists and is accessible, `false` otherwise.
 pub async fn is_backend_running() -> bool {
-    Path::new(SOCKET_PATH).exists()
+    if !Path::new(SOCKET_PATH).exists() {
+        return false;
+    }
+    
+    // Actually try to connect - stale socket files can exist after crashes
+    timeout(Duration::from_millis(500), UnixStream::connect(SOCKET_PATH))
+        .await
+        .map(|r| r.is_ok())
+        .unwrap_or(false)
 }
 
