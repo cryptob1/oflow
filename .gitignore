@@ -60,6 +60,7 @@ node_modules/
 # Tauri
 oflow-ui/src-tauri/target/
 oflow-ui/src-tauri/bin/
+oflow-ui/src-tauri/binaries/
 
 # Backups
 oflow_v1_backup/
