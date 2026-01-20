@@ -45,7 +45,7 @@ build:
 		echo "Installing npm dependencies..."; \
 		cd oflow-ui && npm install; \
 	fi
-	@cd oflow-ui && npm run tauri build
+	@cd oflow-ui && npm run tauri build -- --no-bundle
 
 build-sidecar: setup-backend
 	@echo "Building Python sidecar with PyInstaller..."
@@ -192,11 +192,17 @@ setup-waybar:
 	@if [ -f ~/.config/waybar/config.jsonc ]; then \
 		if ! grep -q '"custom/oflow"' ~/.config/waybar/config.jsonc; then \
 			echo "Adding oflow module to Waybar config..."; \
-			sed -i 's/"modules-center": \[\(.*\)\]/"modules-center": [\1, "custom/spacer", "custom/oflow"]/' ~/.config/waybar/config.jsonc; \
-			echo "Adding spacer module..."; \
-			sed -i '/^}/i \  "custom/spacer": {\n    "format": "  ",\n    "tooltip": false\n  },' ~/.config/waybar/config.jsonc; \
+			if grep -q '"modules-left"' ~/.config/waybar/config.jsonc; then \
+				sed -i 's/"modules-left": \[\([^]]*\)\]/"modules-left": [\1, "custom\/oflow"]/' ~/.config/waybar/config.jsonc; \
+			elif grep -q '"modules-center"' ~/.config/waybar/config.jsonc; then \
+				sed -i 's/"modules-center": \[\([^]]*\)\]/"modules-center": [\1, "custom\/oflow"]/' ~/.config/waybar/config.jsonc; \
+			elif grep -q '"modules-right"' ~/.config/waybar/config.jsonc; then \
+				sed -i 's/"modules-right": \[\([^]]*\)\]/"modules-right": ["custom\/oflow", \1]/' ~/.config/waybar/config.jsonc; \
+			fi; \
 			echo "Adding oflow module definition..."; \
-			sed -i '/^}/i \  "custom/oflow": {\n    "exec": "cat $$XDG_RUNTIME_DIR/oflow/state 2>/dev/null || echo '\''{\"text\":\"󰍬\",\"class\":\"idle\",\"tooltip\":\"oflow not running\"}\''',"\n    "return-type": "json",\n    "interval": 1,\n    "format": "{}",\n    "tooltip": true,\n    "on-click": "~/.local/bin/oflow-toggle"\n  },' ~/.config/waybar/config.jsonc; \
+			sed -i '/^}/i \  "custom/oflow": {\n    "exec": "cat $$XDG_RUNTIME_DIR/oflow/state 2>/dev/null || echo '"'"'{\"text\":\"󰍬\",\"class\":\"idle\",\"tooltip\":\"oflow not running\"}'"'"'",\n    "return-type": "json",\n    "interval": 1,\n    "format": "{}",\n    "tooltip": true,\n    "on-click": "~/.local/bin/oflow-toggle"\n  },' ~/.config/waybar/config.jsonc; \
+			pkill -SIGUSR2 waybar 2>/dev/null || true; \
+			echo "Waybar module added"; \
 		else \
 			echo "Waybar oflow module already configured"; \
 		fi \
@@ -287,14 +293,15 @@ uninstall:
 	fi
 	@echo "  Removing Waybar module..."
 	@if [ -f ~/.config/waybar/config.jsonc ]; then \
-		sed -i '/"custom\/oflow"/,/^  }/d' ~/.config/waybar/config.jsonc 2>/dev/null || true; \
-		sed -i 's/, "custom\/spacer", "custom\/oflow"//g' ~/.config/waybar/config.jsonc 2>/dev/null || true; \
 		sed -i 's/, "custom\/oflow"//g' ~/.config/waybar/config.jsonc 2>/dev/null || true; \
+		sed -i 's/"custom\/oflow", //g' ~/.config/waybar/config.jsonc 2>/dev/null || true; \
+		sed -i '/"custom\/oflow": {/,/^  },/d' ~/.config/waybar/config.jsonc 2>/dev/null || true; \
 	fi
 	@echo "  Removing Waybar CSS..."
 	@if [ -f ~/.config/waybar/style.css ]; then \
-		sed -i '/\/\* Oflow voice dictation/,/^}$$/d' ~/.config/waybar/style.css 2>/dev/null || true; \
-		sed -i '/#custom-oflow/,/^}$$/d' ~/.config/waybar/style.css 2>/dev/null || true; \
+		sed -i '/\/\* Oflow voice dictation/,/^}/d' ~/.config/waybar/style.css 2>/dev/null || true; \
+		sed -i '/#custom-oflow\b/,/^}/d' ~/.config/waybar/style.css 2>/dev/null || true; \
+		sed -i '/\/\* oflow \*\//d' ~/.config/waybar/style.css 2>/dev/null || true; \
 	fi
 	@pkill -SIGUSR2 waybar 2>/dev/null || true
 	@echo "  Removing runtime files..."
