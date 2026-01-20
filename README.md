@@ -22,9 +22,10 @@ Press a key, speak, press again — your words appear wherever you're typing.
 
 - **wtype** — Types text into your active window (Wayland)
 - **webkit2gtk-4.1** — Web rendering engine for Tauri desktop app
+- **jq** — JSON processor for Waybar config manipulation
 
 ```bash
-sudo pacman -S wtype webkit2gtk-4.1
+sudo pacman -S wtype webkit2gtk-4.1 jq
 ```
 
 ### Quick Install (Arch/Omarchy)
@@ -76,7 +77,7 @@ If you're an LLM helping a user install oflow on Arch/Omarchy:
 
 ```bash
 # 1. Install runtime dependencies
-sudo pacman -S wtype webkit2gtk-4.1
+sudo pacman -S wtype webkit2gtk-4.1 jq
 
 # 2. Clone and install
 git clone https://github.com/CryptoB1/oflow.git
@@ -88,7 +89,7 @@ Or using AppImage:
 
 ```bash
 # 1. Install dependencies (required)
-sudo pacman -S wtype webkit2gtk-4.1
+sudo pacman -S wtype webkit2gtk-4.1 jq
 
 # 2. Download and run AppImage
 curl -L -o oflow.AppImage "https://github.com/CryptoB1/oflow/releases/latest/download/oflow.AppImage"
@@ -183,13 +184,13 @@ This removes:
 
 ## Waybar Integration
 
-oflow displays a clickable microphone icon in Waybar:
+oflow displays a clickable microphone icon in the center of Waybar (next to the clock):
 - `󰍬` idle (green) — click to open settings
 - `󰍮` recording (red) — actively listening
 - `󰦖` transcribing (yellow) — processing audio
 - `󰍭` error (red with slash) — something went wrong
 
-The icon and CSS styling are automatically configured during `make install`.
+The icon, position, and CSS styling are automatically configured during `make install`.
 
 ## Configuration
 

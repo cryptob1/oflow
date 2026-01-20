@@ -90,18 +90,30 @@ Settings in `~/.oflow/settings.json`:
 
 ### Waybar Integration
 
-Add to your Waybar config (`~/.config/waybar/config`):
-```jsonc
-"modules-right": ["custom/oflow", ...],
+Waybar integration is automatically configured by `make install`. The oflow icon appears in the center of Waybar (next to the clock).
 
+Manual configuration (if needed):
+```jsonc
+// In modules-center array:
+"modules-center": ["clock", "custom/oflow", ...],
+
+// Module definition:
 "custom/oflow": {
-    "exec": "cat $XDG_RUNTIME_DIR/oflow/state 2>/dev/null || echo '{\"text\":\"○\",\"class\":\"idle\"}'",
+    "exec": "cat $XDG_RUNTIME_DIR/oflow/state 2>/dev/null || echo '{\"text\":\"󰍬\",\"class\":\"idle\"}'",
     "return-type": "json",
     "interval": 1,
     "format": "{}",
     "tooltip": true,
     "on-click": "~/.local/bin/oflow-toggle"
 }
+```
+
+CSS styling (in `~/.config/waybar/style.css`):
+```css
+#custom-oflow.idle { color: #50fa7b; }       /* Green - ready */
+#custom-oflow.recording { color: #ff5555; }  /* Red - recording */
+#custom-oflow.transcribing { color: #f1fa8c; } /* Yellow - processing */
+#custom-oflow.error { color: #ff5555; }      /* Red - error */
 ```
 
 ### Spoken Punctuation

@@ -194,7 +194,7 @@ setup-waybar:
 	@if [ -f ~/.config/waybar/config.jsonc ]; then \
 		if ! jq -e '."custom/oflow"' ~/.config/waybar/config.jsonc >/dev/null 2>&1; then \
 			echo "Adding oflow module to Waybar config..."; \
-			jq '."modules-left" += ["custom/oflow"] | ."custom/oflow" = {"exec": "cat $$XDG_RUNTIME_DIR/oflow/state 2>/dev/null || echo '"'"'{\"text\":\"󰍬\",\"class\":\"idle\",\"tooltip\":\"oflow not running\"}'"'"'", "return-type": "json", "interval": 1, "format": "{}", "tooltip": true, "on-click": "~/.local/bin/oflow-toggle"}' ~/.config/waybar/config.jsonc > /tmp/waybar-oflow-config.jsonc && \
+			jq '."modules-center" = (["clock", "custom/oflow"] + (."modules-center" | map(select(. != "clock")))) | ."custom/oflow" = {"exec": "cat $$XDG_RUNTIME_DIR/oflow/state 2>/dev/null || echo '"'"'{\"text\":\"󰍬\",\"class\":\"idle\",\"tooltip\":\"oflow not running\"}'"'"'", "return-type": "json", "interval": 1, "format": "{}", "tooltip": true, "on-click": "~/.local/bin/oflow-toggle"}' ~/.config/waybar/config.jsonc > /tmp/waybar-oflow-config.jsonc && \
 			mv /tmp/waybar-oflow-config.jsonc ~/.config/waybar/config.jsonc; \
 			pkill -SIGUSR2 waybar 2>/dev/null || true; \
 			echo "Waybar module added"; \
