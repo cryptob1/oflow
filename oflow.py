@@ -46,6 +46,12 @@ import numpy as np
 import sounddevice as sd
 from dotenv import load_dotenv
 
+try:
+    import psutil
+    _HAS_PSUTIL = True
+except ImportError:
+    _HAS_PSUTIL = False
+
 load_dotenv()
 
 _debug_mode = os.getenv("DEBUG_MODE", "false").lower() == "true"
@@ -841,7 +847,8 @@ class VoiceDictationServer:
         self._running = True
         self.is_recording = False
         self._recording_lock = threading.Lock()
-        self.audio_queue: queue.Queue[np.ndarray] = queue.Queue()  # Unbounded queue
+        # Bounded queue: max 600 chunks = ~60 seconds at 10 chunks/sec (prevents memory leak)
+        self.audio_queue: queue.Queue[np.ndarray] = queue.Queue(maxsize=600)
         self.audio_data: list[np.ndarray] = []
 
         # Load settings
@@ -921,7 +928,16 @@ class VoiceDictationServer:
     def _audio_callback(self, indata: np.ndarray, frames: int, time_info: dict, status: int):
         """Callback for audio stream."""
         if self.is_recording:
-            self.audio_queue.put_nowait(indata.copy())
+            try:
+                self.audio_queue.put_nowait(indata.copy())
+            except queue.Full:
+                # Queue full - recording too long, discard oldest data
+                logger.warning("Audio queue full, discarding old data")
+                try:
+                    self.audio_queue.get_nowait()  # Remove oldest
+                    self.audio_queue.put_nowait(indata.copy())  # Add new
+                except queue.Empty:
+                    pass
 
     def _signal_handler(self, signum: int, frame):
         """Handle shutdown signals."""
@@ -1015,6 +1031,26 @@ class VoiceDictationServer:
         asyncio.run(self._process_transcription())
         total_ms = (time.perf_counter() - start) * 1000
         logger.info(f"Recording stopped ({total_ms:.0f}ms)")
+        
+        # Clean up audio data to free memory
+        self.audio_data.clear()
+        
+        # Drain any remaining items in queue
+        while not self.audio_queue.empty():
+            try:
+                self.audio_queue.get_nowait()
+            except queue.Empty:
+                break
+        
+        # Log memory usage in debug mode
+        if DEBUG_MODE and _HAS_PSUTIL:
+            try:
+                import psutil
+                process = psutil.Process()
+                mem_mb = process.memory_info().rss / 1024 / 1024
+                logger.debug(f"Memory usage: {mem_mb:.1f} MB")
+            except Exception:
+                pass
 
     async def _process_transcription(self):
         """Process recorded audio: transcribe, clean up, and type result."""
@@ -1033,6 +1069,9 @@ class VoiceDictationServer:
         # Combine all audio
         audio = np.concatenate(self.audio_data, axis=0).flatten()
         duration = len(audio) / SAMPLE_RATE
+        
+        # Clear audio_data immediately after concatenation to free memory
+        self.audio_data.clear()
 
         # Validate
         valid, error = AudioValidator.validate(audio)
