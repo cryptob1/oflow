@@ -847,8 +847,8 @@ class VoiceDictationServer:
         self._running = True
         self.is_recording = False
         self._recording_lock = threading.Lock()
-        # Bounded queue: max 600 chunks = ~60 seconds at 10 chunks/sec (prevents memory leak)
-        self.audio_queue: queue.Queue[np.ndarray] = queue.Queue(maxsize=600)
+        # Bounded queue: max 3000 chunks = ~300 seconds (5 minutes) at 10 chunks/sec (prevents memory leak)
+        self.audio_queue: queue.Queue[np.ndarray] = queue.Queue(maxsize=3000)
         self.audio_data: list[np.ndarray] = []
 
         # Load settings
