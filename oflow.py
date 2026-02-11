@@ -48,6 +48,7 @@ from dotenv import load_dotenv
 
 try:
     import psutil
+
     _HAS_PSUTIL = True
 except ImportError:
     _HAS_PSUTIL = False
@@ -878,14 +879,8 @@ class VoiceDictationServer:
         except FileNotFoundError:
             pass
 
-        # Start audio stream
-        self.stream = sd.InputStream(
-            samplerate=SAMPLE_RATE,
-            channels=AUDIO_CHANNELS,
-            dtype=np.float32,
-            callback=self._audio_callback,
-        )
-        self.stream.start()
+        # Audio stream (created on-demand, not always running)
+        self.stream = None
 
         # Setup socket
         if os.path.exists(SOCKET_PATH):
@@ -946,7 +941,7 @@ class VoiceDictationServer:
 
     def _cleanup(self):
         """Clean up resources."""
-        if hasattr(self, "stream"):
+        if hasattr(self, "stream") and self.stream is not None:
             try:
                 self.stream.stop()
                 self.stream.close()
@@ -976,6 +971,15 @@ class VoiceDictationServer:
 
             self.is_recording = True
             self.audio_data = []
+
+            # Start audio stream on-demand (saves CPU when idle)
+            self.stream = sd.InputStream(
+                samplerate=SAMPLE_RATE,
+                channels=AUDIO_CHANNELS,
+                dtype=np.float32,
+                callback=self._audio_callback,
+            )
+            self.stream.start()
 
             self.waybar_state.recording()
             self.audio_feedback.play_start()
@@ -1015,6 +1019,15 @@ class VoiceDictationServer:
         # Small additional delay to let any in-flight callback complete
         time.sleep(0.05)
 
+        # Stop and close the audio stream
+        if self.stream is not None:
+            try:
+                self.stream.stop()
+                self.stream.close()
+            except Exception:
+                pass
+            self.stream = None
+
         # Drain remaining audio from queue
         while not self.audio_queue.empty():
             try:
@@ -1031,21 +1044,22 @@ class VoiceDictationServer:
         asyncio.run(self._process_transcription())
         total_ms = (time.perf_counter() - start) * 1000
         logger.info(f"Recording stopped ({total_ms:.0f}ms)")
-        
+
         # Clean up audio data to free memory
         self.audio_data.clear()
-        
+
         # Drain any remaining items in queue
         while not self.audio_queue.empty():
             try:
                 self.audio_queue.get_nowait()
             except queue.Empty:
                 break
-        
+
         # Log memory usage in debug mode
         if DEBUG_MODE and _HAS_PSUTIL:
             try:
                 import psutil
+
                 process = psutil.Process()
                 mem_mb = process.memory_info().rss / 1024 / 1024
                 logger.debug(f"Memory usage: {mem_mb:.1f} MB")
@@ -1069,7 +1083,7 @@ class VoiceDictationServer:
         # Combine all audio
         audio = np.concatenate(self.audio_data, axis=0).flatten()
         duration = len(audio) / SAMPLE_RATE
-        
+
         # Clear audio_data immediately after concatenation to free memory
         self.audio_data.clear()
 
