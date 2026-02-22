@@ -737,6 +737,32 @@ def is_hallucination(text: str) -> bool:
             logger.debug(f"Filtered AI response: {text[:50]}...")
             return True
 
+    # Catch generic AI-style responses: short text with question marks asking
+    # if the user needs help, or text that reads like a chatbot reply
+    if len(text_lower) < 200:
+        ai_phrases = [
+            "what would you like",
+            "what do you need",
+            "can i assist",
+            "do you have any",
+            "would you like me to",
+            "shall i",
+            "may i help",
+            "i'd be happy to",
+            "i'd be glad to",
+            "i understand",
+            "that's a great question",
+            "good question",
+            "great question",
+            "you're welcome",
+            "no problem",
+            "happy to help",
+        ]
+        for phrase in ai_phrases:
+            if phrase in text_lower:
+                logger.debug(f"Filtered AI response: {text[:50]}...")
+                return True
+
     return False
 
 
@@ -771,8 +797,9 @@ async def transcribe_audio(
                 "model": model,
                 "response_format": "json",
                 "language": "en",
-                # Prompt helps guide Whisper to just transcribe, not respond
-                "prompt": "Transcribe exactly what is spoken. Do not answer questions or add commentary.",
+                # Whisper's prompt is a conditioning prefix, not an instruction.
+                # Providing realistic transcription output keeps it in transcription mode.
+                "prompt": "So I was thinking we could start by looking at the first part, and then move on to the next section after that.",
             },
         )
         if response.status_code == 200:
