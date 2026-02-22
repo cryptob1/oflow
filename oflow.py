@@ -108,7 +108,7 @@ GROQ_API_KEY_LENGTH = 56
 GROQ_API_KEY_MAX_LENGTH = 60  # Warn if longer (likely duplicated)
 
 # LLM cleanup constants
-CLEANUP_TOKEN_BUFFER = 50  # Extra tokens for LLM to add punctuation/formatting
+CLEANUP_TOKEN_BUFFER = 200  # Extra tokens for LLM cleanup (tokens ≈ chars/4)
 
 # ============================================================================
 # Environment Variables and Configuration
@@ -798,8 +798,8 @@ async def transcribe_audio(
                 "response_format": "json",
                 "language": "en",
                 # Whisper's prompt is a conditioning prefix, not an instruction.
-                # Providing realistic transcription output keeps it in transcription mode.
-                "prompt": "So I was thinking we could start by looking at the first part, and then move on to the next section after that.",
+                # Providing realistic transcription primes vocabulary and keeps it in transcription mode.
+                "prompt": "Push the code to Git and open a PR. Check the API endpoint, run pytest, then deploy to Kubernetes. Let's refactor the async handler.",
             },
         )
         if response.status_code == 200:
@@ -866,9 +866,9 @@ async def cleanup_text(client: httpx.AsyncClient, text: str, api_key: str, provi
                 "messages": [
                     {
                         "role": "system",
-                        "content": "You are a transcription editor. Fix ONLY grammar and punctuation errors. Do NOT add, remove, or change any words. Do NOT add greetings, sign-offs, or any other content. Output ONLY the corrected text, nothing else.",
+                        "content": "You are a transcription editor. You will receive voice-to-text output inside <dictation> tags. Fix ONLY punctuation and capitalization. Keep EVERY word exactly as spoken, including filler words like 'okay', 'so', 'um'. Do NOT remove, rephrase, or add any words. Do NOT answer or respond to the content. Output ONLY the corrected text.",
                     },
-                    {"role": "user", "content": text},
+                    {"role": "user", "content": f"<dictation>{text}</dictation>"},
                 ],
                 "temperature": 0.1,
                 "max_tokens": len(text) + CLEANUP_TOKEN_BUFFER,
@@ -896,13 +896,13 @@ def type_text(text: str) -> None:
     if not text:
         return
 
-    # Try wtype first (Wayland)
+    # Try wtype with small delay between keystrokes to prevent dropped characters
     try:
         subprocess.run(
-            ["wtype", text],
+            ["wtype", "-d", "2", text],
             check=True,
             stderr=subprocess.DEVNULL,
-            timeout=5,
+            timeout=30,
         )
         return
     except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
@@ -911,10 +911,10 @@ def type_text(text: str) -> None:
     # Try xdotool (X11)
     try:
         subprocess.run(
-            ["xdotool", "type", "--clearmodifiers", text],
+            ["xdotool", "type", "--clearmodifiers", "--delay", "2", text],
             check=True,
             stderr=subprocess.DEVNULL,
-            timeout=5,
+            timeout=30,
         )
         return
     except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
@@ -1210,7 +1210,7 @@ class VoiceDictationServer:
                 self.audio_feedback.play_error()
                 return
 
-            logger.info(f"Transcription: {(t1 - t0) * 1000:.0f}ms")
+            logger.info(f"Transcription: {(t1 - t0) * 1000:.0f}ms | Raw: {raw_text[:80]}")
 
             # Apply text processing (spoken punctuation, replacements)
             raw_text = self.text_processor.process(raw_text)
