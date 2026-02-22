@@ -79,6 +79,8 @@ AUDIO_CHANNELS = 1  # Mono audio
 NORMALIZATION_TARGET = 0.95  # Normalize audio to 95% of max amplitude
 MIN_AUDIO_DURATION_SECONDS = 0.5  # Minimum recording duration
 MIN_AUDIO_AMPLITUDE = 0.02  # Minimum amplitude to detect speech
+CHUNK_DURATION_SECONDS = 25  # Max chunk duration for Whisper (split long audio)
+CHUNK_SPLIT_WINDOW_SECONDS = 3  # Window to search for silence near split point
 
 # API configuration
 API_TIMEOUT_SECONDS = 30.0  # Timeout for API requests
@@ -575,6 +577,50 @@ class AudioProcessor:
         buffer.seek(0)
         return buffer.read()
 
+    @staticmethod
+    def split_into_chunks(audio: np.ndarray) -> list[np.ndarray]:
+        """Split long audio into chunks at silence boundaries.
+
+        For audio shorter than CHUNK_DURATION_SECONDS, returns it as-is.
+        For longer audio, splits near silence points every ~CHUNK_DURATION_SECONDS.
+        """
+        chunk_samples = int(CHUNK_DURATION_SECONDS * SAMPLE_RATE)
+        if len(audio) <= chunk_samples:
+            return [audio]
+
+        window_samples = int(CHUNK_SPLIT_WINDOW_SECONDS * SAMPLE_RATE)
+        chunks = []
+        offset = 0
+
+        while offset < len(audio):
+            remaining = len(audio) - offset
+            if remaining <= chunk_samples:
+                chunks.append(audio[offset:])
+                break
+
+            # Find the quietest point in a window around the target split
+            target = offset + chunk_samples
+            search_start = max(offset + chunk_samples - window_samples, offset)
+            search_end = min(offset + chunk_samples + window_samples, len(audio))
+            window = audio[search_start:search_end]
+
+            # Compute RMS energy in small frames (20ms) to find silence
+            frame_size = int(0.02 * SAMPLE_RATE)  # 20ms frames
+            num_frames = len(window) // frame_size
+            if num_frames > 0:
+                frames = window[: num_frames * frame_size].reshape(num_frames, frame_size)
+                energies = np.sqrt(np.mean(frames**2, axis=1))
+                quietest_frame = np.argmin(energies)
+                split_point = search_start + quietest_frame * frame_size
+            else:
+                split_point = target
+
+            chunks.append(audio[offset:split_point])
+            offset = split_point
+
+        # Filter out empty/tiny chunks
+        return [c for c in chunks if len(c) >= int(0.1 * SAMPLE_RATE)]
+
 
 # ============================================================================
 # Storage
@@ -747,6 +793,29 @@ async def transcribe_audio(
     except Exception as e:
         logger.error(f"Transcription error: {e}")
     return ""
+
+
+async def transcribe_audio_chunked(
+    client: httpx.AsyncClient, audio: np.ndarray, api_key: str, provider: str
+) -> str:
+    """Transcribe audio, splitting long recordings into chunks for reliability.
+
+    Short audio (<25s) is sent directly. Longer audio is split at silence
+    boundaries and chunks are transcribed in parallel, then joined.
+    """
+    chunks = AudioProcessor.split_into_chunks(audio)
+
+    if len(chunks) == 1:
+        return await transcribe_audio(client, chunks[0], api_key, provider)
+
+    logger.info(f"Split {len(audio) / SAMPLE_RATE:.1f}s audio into {len(chunks)} chunks")
+
+    tasks = [transcribe_audio(client, chunk, api_key, provider) for chunk in chunks]
+    results = await asyncio.gather(*tasks)
+
+    # Join non-empty results with spaces
+    texts = [r.strip() for r in results if r.strip()]
+    return " ".join(texts)
 
 
 async def cleanup_text(client: httpx.AsyncClient, text: str, api_key: str, provider: str) -> str:
@@ -1094,14 +1163,12 @@ class VoiceDictationServer:
             self.waybar_state.idle()
             return
 
-        audio = AudioProcessor.normalize(audio)
-
         async with httpx.AsyncClient(timeout=API_TIMEOUT_SECONDS) as client:
             logger.info(f"Processing {duration:.1f}s audio")
 
-            # Transcribe
+            # Transcribe (auto-chunks long audio for reliability)
             t0 = time.perf_counter()
-            raw_text = await transcribe_audio(client, audio, api_key, provider)
+            raw_text = await transcribe_audio_chunked(client, audio, api_key, provider)
             t1 = time.perf_counter()
 
             if not raw_text:
