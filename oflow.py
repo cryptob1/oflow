@@ -1073,6 +1073,7 @@ class VoiceDictationServer:
                 samplerate=SAMPLE_RATE,
                 channels=AUDIO_CHANNELS,
                 dtype=np.float32,
+                blocksize=1600,  # 100ms chunks → 10 callbacks/sec → 3000 chunks = 5 min
                 callback=self._audio_callback,
             )
             self.stream.start()
