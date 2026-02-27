@@ -694,6 +694,14 @@ HALLUCINATION_PATTERNS = [
     "is there anything",
     "let me know if",
     "feel free to ask",
+    # Whisper conditioning prompt leakage
+    "async handler",
+    "refactor the async handler",
+    "let's refactor",
+    "push the code",
+    "open a pr",
+    "run pytest",
+    "deploy to kubernetes",
 ]
 
 # Patterns that indicate Whisper is answering instead of transcribing
