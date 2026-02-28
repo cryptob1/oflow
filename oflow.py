@@ -730,14 +730,18 @@ def is_hallucination(text: str) -> bool:
         return False
     text_lower = text.lower().strip()
 
-    # Check for common hallucination patterns
-    for pattern in HALLUCINATION_PATTERNS:
-        if pattern in text_lower:
-            return True
-
     # Very short text that's just punctuation
     if len(text) < 3 or text in [".", "..", "...", "!", "?", ","]:
         return True
+
+    # Check for common hallucination patterns, but ONLY for short text.
+    # Real Whisper hallucinations are brief repetitive phrases ("Thank you",
+    # "Subscribe", etc). Long transcriptions are real speech that may
+    # legitimately contain these phrases, so skip the substring check.
+    if len(text_lower) < 100:
+        for pattern in HALLUCINATION_PATTERNS:
+            if pattern in text_lower:
+                return True
 
     # Detect AI-style responses (Whisper answering instead of transcribing)
     for start in AI_RESPONSE_STARTS:
@@ -747,7 +751,7 @@ def is_hallucination(text: str) -> bool:
 
     # Catch generic AI-style responses: short text with question marks asking
     # if the user needs help, or text that reads like a chatbot reply
-    if len(text_lower) < 200:
+    if len(text_lower) < 100:
         ai_phrases = [
             "what would you like",
             "what do you need",
