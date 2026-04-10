@@ -77,16 +77,17 @@ class TestHallucinationDetection:
 
     @pytest.mark.unit
     def test_partial_matches(self):
-        """Partial matches within valid text should be handled correctly."""
-        # Note: The current implementation uses simple substring matching
-        # so "subscribe" anywhere will trigger. This is by design to be conservative.
-        # If we want more sophisticated detection, we'd need to improve the algorithm.
+        """Real speech that merely contains a hallucination phrase must pass.
 
-        # These will currently be detected as hallucinations (conservative approach)
-        assert is_hallucination("I want to subscribe to the newsletter")
-        assert is_hallucination("I need to subscribe to this service")
+        The filter only triggers when a single pattern makes up the bulk of the
+        text (or when several distinct patterns stack up). A common word like
+        "subscribe" inside a longer real utterance must not be discarded.
+        """
+        # Real dictation that happens to contain a pattern word — keep it.
+        assert not is_hallucination("I want to subscribe to the newsletter")
+        assert not is_hallucination("I need to subscribe to this service")
 
-        # But the specific hallucination patterns should still trigger
+        # But the bare hallucination phrases should still trigger.
         assert is_hallucination("subscribe to my channel")
         assert is_hallucination("please subscribe")
 

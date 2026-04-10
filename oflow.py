@@ -747,13 +747,24 @@ def is_hallucination(text: str) -> bool:
         logger.info(f"Filtered hallucination (too short): {text!r}")
         return True
 
-    # Common hallucination patterns — substring match only for short text,
-    # since long transcriptions may legitimately contain these phrases.
-    if len(text_lower) < 100:
-        for pattern in HALLUCINATION_PATTERNS:
-            if pattern in text_lower:
+    # Check for common hallucination patterns, but ONLY for very short text
+    # where the hallucination phrase makes up the bulk of the content.
+    # Real Whisper hallucinations are brief repetitive phrases ("Thank you",
+    # "Subscribe", etc). Longer text that merely contains these as substrings
+    # is real speech and must not be filtered.
+    if len(text_lower) < 60:
+        hits = [p for p in HALLUCINATION_PATTERNS if p in text_lower]
+        # Filter if a single pattern accounts for most of the text...
+        for pattern in hits:
+            if len(text_lower) < len(pattern) + 15:
                 logger.info(f"Filtered hallucination (matched {pattern!r}): {text[:80]}")
                 return True
+        # ...or if several distinct patterns stack up in short text. Real speech
+        # rarely chains multiple AI/YouTube clichés ("I'm sorry, I cannot help");
+        # Whisper hallucinations do. Mirrors the 2+ prompt-leakage heuristic below.
+        if len(hits) >= 2:
+            logger.info(f"Filtered hallucination (matched {hits}): {text[:80]}")
+            return True
 
     # Conditioning-prompt leakage: require 2+ matches, since a single phrase
     # is usually legitimate engineering dictation.
@@ -767,7 +778,9 @@ def is_hallucination(text: str) -> bool:
             logger.info(f"Filtered AI response (starts with {start!r}): {text[:80]}")
             return True
 
-    if len(text_lower) < 100:
+    # Catch generic AI-style responses: short text that is essentially just
+    # a chatbot reply with no real dictated content around it
+    if len(text_lower) < 60:
         ai_phrases = [
             "what would you like",
             "what do you need",
@@ -778,16 +791,14 @@ def is_hallucination(text: str) -> bool:
             "may i help",
             "i'd be happy to",
             "i'd be glad to",
-            "i understand",
             "that's a great question",
             "good question",
             "great question",
             "you're welcome",
-            "no problem",
             "happy to help",
         ]
         for phrase in ai_phrases:
-            if phrase in text_lower:
+            if phrase in text_lower and len(text_lower) < len(phrase) + 15:
                 logger.info(f"Filtered AI response (matched {phrase!r}): {text[:80]}")
                 return True
 
