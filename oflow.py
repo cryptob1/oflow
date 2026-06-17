@@ -929,15 +929,127 @@ async def cleanup_text(client: httpx.AsyncClient, text: str, api_key: str, provi
 # ============================================================================
 
 
+# Substrings (matched case-insensitively against the focused window's class)
+# that mark a terminal. Terminals paste with Ctrl+Shift+V; Ctrl+V is reserved
+# for the literal control character there, so a plain Ctrl+V does nothing.
+_TERMINAL_WINDOW_HINTS = (
+    "foot", "alacritty", "kitty", "wezterm", "ghostty", "xterm", "urxvt",
+    "rxvt", "st-256color", "konsole", "termite", "tilix", "terminator",
+    "gnome-terminal", "terminal",
+)
+
+# Linux input-event keycodes (see linux/input-event-codes.h) for ydotool key.
+_KEY_LEFTCTRL = "29"
+_KEY_LEFTSHIFT = "42"
+_KEY_V = "47"
+
+
+def _paste_chord() -> list[str]:
+    """ydotool 'key' args for the paste shortcut suited to the focused window:
+    Ctrl+Shift+V for terminals, Ctrl+V everywhere else."""
+    ctrl_v = [f"{_KEY_LEFTCTRL}:1", f"{_KEY_V}:1", f"{_KEY_V}:0", f"{_KEY_LEFTCTRL}:0"]
+    ctrl_shift_v = [
+        f"{_KEY_LEFTCTRL}:1", f"{_KEY_LEFTSHIFT}:1", f"{_KEY_V}:1",
+        f"{_KEY_V}:0", f"{_KEY_LEFTSHIFT}:0", f"{_KEY_LEFTCTRL}:0",
+    ]
+    try:
+        out = subprocess.run(
+            ["hyprctl", "activewindow", "-j"],
+            capture_output=True, text=True, timeout=2,
+        ).stdout
+        cls = (json.loads(out).get("class") or "").lower()
+        if any(hint in cls for hint in _TERMINAL_WINDOW_HINTS):
+            return ctrl_shift_v
+    except (subprocess.SubprocessError, json.JSONDecodeError, OSError):
+        # Unknown focus → assume a normal app; Ctrl+V is the safe default.
+        pass
+    return ctrl_v
+
+
+def _paste_text(text: str) -> bool:
+    """Insert text in one shot via the clipboard + a single paste keystroke.
+
+    Far faster than per-character injection and immune to per-keystroke timing
+    issues. Preserves the user's existing clipboard. Needs wl-copy and ydotool;
+    returns False if either is missing or the paste fails, so the caller can fall
+    back to typing.
+    """
+    # Best-effort snapshot of the current clipboard so dictation doesn't clobber it.
+    try:
+        prev = subprocess.run(
+            ["wl-paste", "--no-newline"], capture_output=True, timeout=2
+        ).stdout
+    except (subprocess.SubprocessError, FileNotFoundError, OSError):
+        prev = None
+
+    chord = _paste_chord()
+    try:
+        subprocess.run(["wl-copy"], input=text.encode(), check=True, timeout=5)
+        subprocess.run(
+            ["ydotool", "key", *chord],
+            check=True, stderr=subprocess.DEVNULL, timeout=5,
+        )
+    except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired) as e:
+        logger.warning(f"Paste failed ({type(e).__name__}: {e}); falling back to typing")
+        return False
+
+    logger.info(f"Pasted {len(text)} chars (chord={'+'.join(chord)})")
+
+    # Restore the prior clipboard once the paste has consumed our offer. The delay
+    # avoids a race where apps that read the selection lazily get the old data.
+    if prev:
+        try:
+            time.sleep(0.25)
+            subprocess.run(["wl-copy"], input=prev, check=False, timeout=5)
+        except (subprocess.SubprocessError, OSError):
+            pass
+    return True
+
+
 def type_text(text: str) -> None:
-    """Type text into the active window using wtype."""
+    """Insert transcribed text into the active window.
+
+    Defaults to one-shot clipboard paste (outputMode="paste"): instant and
+    reliable across apps. Falls back to per-keystroke injection (outputMode="type"
+    or if paste is unavailable). For typing, prefers ydotool (uinput) over wtype:
+    wtype uploads a custom keymap on a virtual Wayland keyboard, which XWayland
+    clients (e.g. Chrome/Electron running under XWayland) ignore — they decode its
+    keycodes against the seat's US layout instead, turning dictated text into the
+    number row ("12345..."). ydotool injects real keycodes through kernel uinput,
+    which Wayland, XWayland, and X11 all decode identically.
+    """
     if not text:
         return
 
-    # Try wtype with small delay between keystrokes to prevent dropped characters
+    settings = load_settings()
+
+    # One-shot paste is the default; fall through to typing if it's unavailable.
+    if settings.get("outputMode", "paste") == "paste" and _paste_text(text):
+        return
+
+    # Delay between keystrokes. A too-small value drops characters in apps with
+    # heavy input handling (e.g. React web apps like Gemini), which can't keep up
+    # when keystrokes arrive faster than they process them. 12ms is reliable
+    # across web apps while staying imperceptibly fast; tune via settings if needed.
+    delay_ms = str(settings.get("typingDelayMs", 12))
+
+    # Try ydotool first (works in XWayland apps where wtype produces digits).
+    # Requires ydotoold running; YDOTOOL_SOCKET is auto-detected by recent versions.
     try:
         subprocess.run(
-            ["wtype", "-d", "2", text],
+            ["ydotool", "type", "--key-delay", delay_ms, "--", text],
+            check=True,
+            stderr=subprocess.DEVNULL,
+            timeout=30,
+        )
+        return
+    except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
+        pass
+
+    # Fall back to wtype (reliable in terminals; may misfire in Chromium/Electron)
+    try:
+        subprocess.run(
+            ["wtype", "-d", delay_ms, text],
             check=True,
             stderr=subprocess.DEVNULL,
             timeout=30,
@@ -949,7 +1061,7 @@ def type_text(text: str) -> None:
     # Try xdotool (X11)
     try:
         subprocess.run(
-            ["xdotool", "type", "--clearmodifiers", "--delay", "2", text],
+            ["xdotool", "type", "--clearmodifiers", "--delay", delay_ms, text],
             check=True,
             stderr=subprocess.DEVNULL,
             timeout=30,
