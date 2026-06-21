@@ -110,7 +110,7 @@ lint:
 	@echo "Linting code..."
 	@ruff check .
 
-install: build setup-hotkey setup-waybar setup-waybar-css setup-autostart setup-osd
+install: setup-backend build setup-hotkey setup-waybar setup-waybar-css setup-autostart setup-osd
 	@echo "Installing oflow..."
 	@mkdir -p ~/.local/bin
 	@cp oflow-ui/src-tauri/target/release/oflow-ui ~/.local/bin/oflow

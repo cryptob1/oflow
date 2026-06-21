@@ -1,10 +1,20 @@
-# oflow — Fast, Accurate Voice‑to‑Text Dictation for Linux (Wayland / Hyprland)
+# oflow — Wispr Flow–grade Voice Typing for Linux, Powered by Groq
 
-**oflow is open‑source voice dictation (speech‑to‑text) for Linux.** Hold **F8**, speak, release — your words are transcribed and pasted into whatever app you're typing in: your editor, terminal, browser, or an AI chat prompt.
+**The most accurate voice‑to‑text dictation on Linux — and it's effectively free.**
+Hold **F8**, speak, release: your words are transcribed and pasted into any app — your editor, terminal, browser, or an AI chat prompt.
 
-It's like [Voxtype](https://voxtype.io) or [Wispr Flow](https://wisprflow.ai), **but it transcribes with [Groq](https://groq.com)'s hosted Whisper (`large‑v3‑turbo`) instead of a small on‑device model.** That means oflow is **more accurate than the lightweight Whisper models people run locally** — and because Groq's LPU inference is so fast, you don't pay for that accuracy in latency (~0.5–0.7s end‑to‑end). All transcripts stay on your machine; there's no telemetry and no cloud backend beyond the transcription call.
+<!--
+  ⭐ DEMO GIF — this is the single biggest driver of GitHub stars. Record a ~5s clip
+  (hold F8 → overlay appears → speak → text pastes), save it to docs/demo.gif, and
+  uncomment the line below:
+  <p align="center"><img src="docs/demo.gif" alt="oflow — hold F8, speak, and your words paste into any app" width="640"></p>
+-->
 
-Built for **Wayland**, **Hyprland**, and **Omarchy**.
+oflow is like [Voxtype](https://voxtype.io) or [Wispr Flow](https://wisprflow.ai), but instead of running a *small* Whisper model on your laptop, it transcribes with **[Groq](https://groq.com)'s hosted Whisper `large‑v3‑turbo`** — the *full*, accurate model, in ~0.5s, with **no GPU, no 3 GB of resident RAM, and no model setup**. Local dictation forces a trade between fast‑but‑inaccurate and accurate‑but‑slow; Groq breaks it.
+
+> **Will a cloud API cost me anything?** Almost certainly not. Groq's free tier is **~2,000 transcriptions per day** — far more than anyone speaks. Past that it's just **$0.04 per hour of audio** (≈9× cheaper than OpenAI); a month of heavy daily use is a few cents. ([Groq pricing](https://groq.com/pricing))
+
+Built for **Wayland**, **Hyprland**, and **Omarchy**. Open source, transcripts stored locally, no telemetry.
 
 ## Features
 
@@ -17,7 +27,7 @@ Built for **Wayland**, **Hyprland**, and **Omarchy**.
 - **Smart cleanup** — Auto-fixes grammar, removes filler words, formats text
 - **Waybar integration** — Click status icon to open settings, visual feedback while recording
 - **Spoken punctuation** — Say "period" or "new line" to insert symbols
-- **Privacy-first** — All data stored locally, no cloud backend
+- **Privacy-conscious** — Transcripts stored locally, no telemetry; audio is sent only to Groq for the ~0.5s transcription and never stored
 - **Open source** — Built with Python + Tauri
 
 ## How oflow compares to local voice dictation (Voxtype, nerd‑dictation)
@@ -33,51 +43,46 @@ Most open‑source Linux dictation tools (Voxtype, nerd‑dictation, numen) run 
 | Works offline | No (needs internet for the transcription call) | Yes |
 | Battery | Light (compute is off‑device) | Heavier per dictation |
 
-**Pick local** if you need fully offline/private dictation. **Pick oflow** if you want the *most accurate* voice‑to‑text without running a slow model on your laptop — the cloud round‑trip is faster and far more accurate than a local model of comparable speed.
+**The verdict:** if you're ever offline, use a local tool. Otherwise there's no contest — oflow gives you a *larger, more accurate* model at *lower latency*, with *no GPU, no RAM cost, no model downloads, and no real bill*. You stop choosing between "fast" and "accurate."
 
-## Install
-
-### Requirements
-
-- **ydotool** — Pastes/types text into the active window (needs the `ydotoold` daemon)
-- **playerctl** — Pauses playing media while you dictate
-- **gtk4-layer-shell**, **python-gobject**, **python-cairo** — The on-screen recording overlay
-- **webkit2gtk-4.1** — Web rendering engine for the Tauri desktop app
-- **jq** — JSON processor for Waybar config manipulation
+## Install — one command (Arch / Omarchy)
 
 ```bash
-sudo pacman -S ydotool playerctl gtk4-layer-shell python-gobject python-cairo webkit2gtk-4.1 jq
+curl -fsSL https://raw.githubusercontent.com/cryptob1/oflow/master/install.sh | bash
+```
 
-# Enable the ydotool daemon (one-shot paste). The package ships a udev rule for
-# /dev/uinput access; add yourself to the input group and re-login if needed:
+Installs everything — dependencies, the app, the **F8** hotkey, the recording overlay, the paste daemon, and autostart. Then paste a free [Groq API key](https://console.groq.com/keys) and hold **F8** to talk.
+
+### …or let an AI agent install it (Claude Code, Cursor, etc.)
+
+Paste this into your terminal AI agent:
+
+> Install **oflow** (voice dictation) from `https://github.com/cryptob1/oflow` on this Arch/Omarchy machine: run its `install.sh` from the `master` branch, make sure the `ydotoold` user service is enabled, then tell me to paste my Groq API key in Settings and hold **F8** to dictate.
+
+<details>
+<summary><b>Manual install / full dependency list</b></summary>
+
+```bash
+# Dependencies
+sudo pacman -S --needed git base-devel uv nodejs npm rust \
+  webkit2gtk-4.1 jq ydotool playerctl gtk4-layer-shell python-gobject python-cairo
+
+# Enable the ydotool paste daemon (ships a /dev/uinput udev rule; you may need to re-login)
 sudo usermod -aG input "$USER"
 systemctl --user enable --now ydotool.service
+
+# Build & install
+git clone https://github.com/cryptob1/oflow.git ~/code/oflow
+cd ~/code/oflow && make install
 ```
+</details>
 
-### Quick Install (Arch/Omarchy)
+## Setup (10 seconds)
 
-```bash
-git clone https://github.com/CryptoB1/oflow.git
-cd oflow
-make install   # Builds app, installs to ~/.local/bin, sets up Waybar & autostart
-```
+1. Click the `󰍬` mic icon in Waybar (or the tray) → **Settings** → paste a free [Groq API key](https://console.groq.com/keys).
+2. **Hold F8**, speak, release — your words paste wherever you're typing.
 
-### Manual Download
-
-[github.com/CryptoB1/oflow/releases](https://github.com/CryptoB1/oflow/releases)
-
-```bash
-chmod +x oflow-*.AppImage
-./oflow-*.AppImage
-```
-
-## Setup
-
-1. Get a free Groq API key: https://console.groq.com/keys
-2. Click the `󰍬` microphone icon in Waybar → Settings → paste your Groq key
-3. **Hold F8** to record, release to stop, transcribe, and paste
-
-That's it.
+> **Tip:** end a dictation with **"press enter"** to submit — great for firing off AI prompts hands‑free.
 
 ## How It Works
 
@@ -92,38 +97,20 @@ Hold F8 → Speak → Release → Text appears in active window
 
 ## Tech Stack
 
-- **Transcription**: [Groq Whisper](https://groq.com) (200x faster than OpenAI)
+- **Transcription**: [Groq Whisper](https://groq.com) `large-v3-turbo` — ~300× realtime, ~$0.04/hr
 - **Text cleanup**: Llama 3.1 8B via Groq
 - **Backend**: Python with asyncio + httpx
 - **Desktop app**: [Tauri](https://tauri.app) + React
 
-## For LLMs
+## For LLMs / AI coding agents
 
-If you're an LLM helping a user install oflow on Arch/Omarchy:
-
-```bash
-# 1. Install runtime dependencies
-sudo pacman -S ydotool playerctl gtk4-layer-shell python-gobject python-cairo webkit2gtk-4.1 jq
-
-# 2. Clone and install
-git clone https://github.com/CryptoB1/oflow.git
-cd oflow
-make install
-```
-
-Or using AppImage:
+If you're an AI agent installing oflow on an Arch/Omarchy machine, just run the installer:
 
 ```bash
-# 1. Install dependencies (required)
-sudo pacman -S ydotool playerctl gtk4-layer-shell python-gobject python-cairo webkit2gtk-4.1 jq
-
-# 2. Download and run AppImage
-curl -L -o oflow.AppImage "https://github.com/CryptoB1/oflow/releases/latest/download/oflow.AppImage"
-chmod +x oflow.AppImage
-./oflow.AppImage
+curl -fsSL https://raw.githubusercontent.com/cryptob1/oflow/master/install.sh | bash
 ```
 
-The user needs a Groq API key from https://console.groq.com/keys (free tier available). They can paste it in Settings after launching the app. The hotkey is **F8** (push-to-talk: hold to record, release to stop & paste).
+It installs all dependencies, builds the app, and sets up the F8 hotkey, the overlay, the `ydotoold` paste daemon, and autostart. Afterward, tell the user to paste a free Groq API key (https://console.groq.com/keys) in **Settings** (tray/Waybar mic icon) and **hold F8** to dictate. Push‑to‑talk: hold F8 to record, release to stop, transcribe, and paste. End a sentence with "press enter" to also submit.
 
 ## Build from Source
 
@@ -143,7 +130,7 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 ### Build & Run
 
 ```bash
-git clone https://github.com/CryptoB1/oflow.git
+git clone https://github.com/cryptob1/oflow.git
 cd oflow
 make install  # Full install: build app, setup hotkey, Waybar & autostart
 ```
