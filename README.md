@@ -1,8 +1,10 @@
-# oflow
+# oflow — Fast, Accurate Voice‑to‑Text Dictation for Linux (Wayland / Hyprland)
 
-**Voice-to-text for Omarchy** — Like [Wispr Flow](https://wisprflow.ai), but open source and local-first.
+**oflow is open‑source voice dictation (speech‑to‑text) for Linux.** Hold **F8**, speak, release — your words are transcribed and pasted into whatever app you're typing in: your editor, terminal, browser, or an AI chat prompt.
 
-Hold F8, speak, release — your words appear wherever you're typing.
+It's like [Voxtype](https://voxtype.io) or [Wispr Flow](https://wisprflow.ai), **but it transcribes with [Groq](https://groq.com)'s hosted Whisper (`large‑v3‑turbo`) instead of a small on‑device model.** That means oflow is **more accurate than the lightweight Whisper models people run locally** — and because Groq's LPU inference is so fast, you don't pay for that accuracy in latency (~0.5–0.7s end‑to‑end). All transcripts stay on your machine; there's no telemetry and no cloud backend beyond the transcription call.
+
+Built for **Wayland**, **Hyprland**, and **Omarchy**.
 
 ## Features
 
@@ -17,6 +19,21 @@ Hold F8, speak, release — your words appear wherever you're typing.
 - **Spoken punctuation** — Say "period" or "new line" to insert symbols
 - **Privacy-first** — All data stored locally, no cloud backend
 - **Open source** — Built with Python + Tauri
+
+## How oflow compares to local voice dictation (Voxtype, nerd‑dictation)
+
+Most open‑source Linux dictation tools (Voxtype, nerd‑dictation, numen) run a **small Whisper model on your own CPU/GPU** to stay fast. oflow takes the opposite trade‑off: it sends your audio to **Groq's hosted Whisper `large‑v3‑turbo`**, then runs an LLM cleanup pass — so you get a *large, accurate* model at *low latency*.
+
+| | **oflow** (Groq cloud) | **Local models** (Voxtype default, nerd‑dictation) |
+|---|---|---|
+| Speech model | Whisper **large‑v3‑turbo** (server‑side) | Small Whisper (tiny/base) on your hardware |
+| **Accuracy** | Higher — full large model | Lower — small model chosen to stay fast |
+| **Speed** | ~0.5–0.7 s (Groq LPU inference) | Fast for tiny models, slow for accurate ones |
+| Grammar/filler cleanup | Yes — Llama 3.1 8B pass | Usually none |
+| Works offline | No (needs internet for the transcription call) | Yes |
+| Battery | Light (compute is off‑device) | Heavier per dictation |
+
+**Pick local** if you need fully offline/private dictation. **Pick oflow** if you want the *most accurate* voice‑to‑text without running a slow model on your laptop — the cloud round‑trip is faster and far more accurate than a local model of comparable speed.
 
 ## Install
 

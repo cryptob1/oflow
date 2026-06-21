@@ -21,6 +21,7 @@ export function SettingsView() {
     const [showGroqKey, setShowGroqKey] = useState(false);
     const [apiKeyInput, setApiKeyInput] = useState("");
     const [groqKeyInput, setGroqKeyInput] = useState("");
+    const [submitKeywordsInput, setSubmitKeywordsInput] = useState("press enter, hit enter");
 
     useEffect(() => {
         const load = async () => {
@@ -34,6 +35,9 @@ export function SettingsView() {
                 if (loadedSettings.groqApiKey) {
                     setGroqKeyInput(loadedSettings.groqApiKey);
                 }
+                if (loadedSettings.submitKeywords && loadedSettings.submitKeywords.length) {
+                    setSubmitKeywordsInput(loadedSettings.submitKeywords.join(", "));
+                }
             } catch (error) {
                 console.error("Failed to load settings:", error);
             } finally {
@@ -43,7 +47,7 @@ export function SettingsView() {
         load();
     }, []);
 
-    const handleSettingChange = async (key: keyof Settings, value: boolean) => {
+    const handleSettingChange = async (key: keyof Settings, value: boolean | string | string[]) => {
         const newSettings = { ...settings, [key]: value };
         setSettings(newSettings);
 
@@ -54,6 +58,11 @@ export function SettingsView() {
             console.error("Failed to save settings:", error);
             showToast("Failed to save settings", "error");
         }
+    };
+
+    const handleSaveSubmitKeywords = async () => {
+        const phrases = submitKeywordsInput.split(",").map(s => s.trim()).filter(Boolean);
+        await handleSettingChange("submitKeywords", phrases);
     };
 
     const handleClearHistory = async () => {
@@ -264,6 +273,57 @@ export function SettingsView() {
 
                 <Card>
                     <CardHeader>
+                        <CardTitle>Dictation &amp; Feedback</CardTitle>
+                        <CardDescription>Recording feedback and on-screen behavior.</CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-6">
+                        <div className="flex items-center justify-between space-x-2">
+                            <div className="space-y-1">
+                                <Label htmlFor="overlay">Recording overlay</Label>
+                                <p className="text-sm text-muted-foreground">Show the on-screen audio level meter while recording.</p>
+                            </div>
+                            <Switch id="overlay" checked={settings.enableOverlay ?? true}
+                                onCheckedChange={(c) => handleSettingChange("enableOverlay", c)} disabled={isLoading} />
+                        </div>
+                        <div className="flex items-center justify-between space-x-2">
+                            <div className="space-y-1">
+                                <Label htmlFor="pausemedia">Pause media while recording</Label>
+                                <p className="text-sm text-muted-foreground">Pause playing music/video so it doesn&apos;t bleed into the mic.</p>
+                            </div>
+                            <Switch id="pausemedia" checked={settings.pauseMediaWhileRecording ?? true}
+                                onCheckedChange={(c) => handleSettingChange("pauseMediaWhileRecording", c)} disabled={isLoading} />
+                        </div>
+                        <div className="flex items-center justify-between space-x-2">
+                            <div className="space-y-1">
+                                <Label htmlFor="sounds">Sound effects</Label>
+                                <p className="text-sm text-muted-foreground">Play start/stop beeps. Off = silent (rely on the overlay).</p>
+                            </div>
+                            <Switch id="sounds" checked={(settings.audioFeedbackTheme ?? "default") !== "silent"}
+                                onCheckedChange={(c) => handleSettingChange("audioFeedbackTheme", c ? "default" : "silent")} disabled={isLoading} />
+                        </div>
+                        <div className="flex items-center justify-between space-x-2">
+                            <div className="space-y-1">
+                                <Label htmlFor="punct">Spoken punctuation</Label>
+                                <p className="text-sm text-muted-foreground">Say &quot;period&quot; or &quot;new line&quot; to insert symbols.</p>
+                            </div>
+                            <Switch id="punct" checked={settings.enableSpokenPunctuation ?? false}
+                                onCheckedChange={(c) => handleSettingChange("enableSpokenPunctuation", c)} disabled={isLoading} />
+                        </div>
+                        <div className="space-y-2">
+                            <Label htmlFor="submitkw">Submit phrases</Label>
+                            <p className="text-sm text-muted-foreground">Saying one of these at the end presses Enter after pasting (great for prompts). Comma-separated.</p>
+                            <div className="flex gap-2">
+                                <Input id="submitkw" value={submitKeywordsInput}
+                                    onChange={(e) => setSubmitKeywordsInput(e.target.value)}
+                                    placeholder="press enter, hit enter" disabled={isLoading} />
+                                <Button onClick={handleSaveSubmitKeywords} disabled={isLoading}>Save</Button>
+                            </div>
+                        </div>
+                    </CardContent>
+                </Card>
+
+                <Card>
+                    <CardHeader>
                         <CardTitle className="flex items-center gap-2">
                             <Shield className="h-5 w-5" />
                             Storage & Privacy
@@ -286,7 +346,7 @@ export function SettingsView() {
                         <div className="space-y-1">
                             <Label>Hotkey</Label>
                             <div className="p-2 bg-muted rounded-md text-sm font-mono">
-                                Super+D (toggle mode)
+                                F8 (push-to-talk: hold to record)
                             </div>
                             <p className="text-xs text-muted-foreground">
                                 Configured via Hyprland. Edit ~/.config/hypr/bindings.conf to change.

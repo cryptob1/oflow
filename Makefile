@@ -1,4 +1,4 @@
-.PHONY: help run stop dev build build-appimage build-sidecar test test-unit test-integration test-all format lint clean install install-appimage uninstall setup-backend setup-frontend setup-waybar setup-waybar-css setup-autostart setup-hotkey install-oflow-ctl
+.PHONY: help run stop dev reload update _ensure-sidecar-stub build build-appimage build-sidecar test test-unit test-integration test-all format lint clean install install-appimage uninstall setup-backend setup-frontend setup-waybar setup-waybar-css setup-autostart setup-hotkey setup-osd install-oflow-ctl
 
 SIDECAR_NAME := oflow-backend-x86_64-unknown-linux-gnu
 
@@ -9,6 +9,8 @@ help:
 	@echo "  make install         - Full install: build, install binary, setup Waybar & autostart"
 	@echo "  make install-appimage- Build and install bundled AppImage (includes Python backend)"
 	@echo "  make uninstall       - Remove oflow binary, Waybar config, and autostart"
+	@echo "  make reload          - Restart app to pick up backend/overlay edits (no rebuild) ⚡"
+	@echo "  make update          - Rebuild UI + reinstall + restart (after editing oflow-ui/)"
 	@echo "  make dev             - Run in development mode (hot reload)"
 	@echo "  make build           - Build release binary only (requires separate backend)"
 	@echo "  make build-appimage  - Build bundled AppImage with embedded Python backend"
@@ -119,6 +121,45 @@ setup-osd:
 	@mkdir -p ~/.local/share/oflow
 	@cp oflow-osd.py ~/.local/share/oflow/oflow-osd.py
 	@echo "Overlay installed (needs: gtk4-layer-shell python-gobject python-cairo)"
+
+# --- Fast iteration ----------------------------------------------------------
+# reload: restart the running app. Picks up Python backend (oflow.py) and
+#         overlay (oflow-osd.py) edits with NO rebuild. Use this most of the time.
+reload:
+	@echo "Restarting oflow (hidden)..."
+	@-kill $$(cat /tmp/oflow.pid 2>/dev/null) 2>/dev/null
+	@-pkill -x oflow 2>/dev/null
+	@sleep 1
+	@rm -f /tmp/voice-dictation.sock /tmp/oflow.pid
+	@cp oflow-osd.py ~/.local/share/oflow/oflow-osd.py 2>/dev/null || true
+	@setsid ~/.local/bin/oflow --hidden >/dev/null 2>&1 & true
+	@sleep 2
+	@if [ -S /tmp/voice-dictation.sock ]; then echo "✅ oflow running (hidden), backend up"; else echo "⚠️  backend not up — check 'make run'"; fi
+
+# update: rebuild the UI (Rust/React), reinstall, and restart. Use after editing
+#         anything under oflow-ui/. Creates the dev sidecar stub if missing.
+update: _ensure-sidecar-stub
+	@echo "Building oflow UI (release)..."
+	@cd oflow-ui && npm run tauri build -- --no-bundle
+	@echo "Stopping running oflow (so the binary isn't busy)..."
+	@-kill $$(cat /tmp/oflow.pid 2>/dev/null) 2>/dev/null
+	@-pkill -x oflow 2>/dev/null
+	@sleep 1
+	@rm -f /tmp/voice-dictation.sock /tmp/oflow.pid
+	@echo "Installing..."
+	@cp oflow-ui/src-tauri/target/release/oflow-ui ~/.local/bin/oflow
+	@chmod +x ~/.local/bin/oflow
+	@mkdir -p ~/.local/share/oflow && cp oflow-osd.py ~/.local/share/oflow/oflow-osd.py
+	@setsid ~/.local/bin/oflow --hidden >/dev/null 2>&1 & true
+	@sleep 2
+	@if [ -S /tmp/voice-dictation.sock ]; then echo "✅ oflow updated & running (hidden)"; else echo "⚠️  backend not up — check 'make run'"; fi
+
+_ensure-sidecar-stub:
+	@mkdir -p oflow-ui/src-tauri/bin
+	@if [ ! -e oflow-ui/src-tauri/bin/$(SIDECAR_NAME) ]; then \
+		printf '#!/bin/bash\nexec "$$HOME/code/oflow/.venv/bin/python" "$$HOME/code/oflow/oflow.py" "$$@"\n' > oflow-ui/src-tauri/bin/$(SIDECAR_NAME); \
+		chmod +x oflow-ui/src-tauri/bin/$(SIDECAR_NAME); \
+	fi
 	@echo '#!/bin/bash' > ~/.local/bin/oflow-toggle
 	@echo 'OFLOW_BIN="$$HOME/.local/bin/oflow"' >> ~/.local/bin/oflow-toggle
 	@echo 'WIN_CLASS="oflow-ui"' >> ~/.local/bin/oflow-toggle

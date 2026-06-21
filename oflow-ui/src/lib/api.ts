@@ -13,6 +13,11 @@ export interface Settings {
     openaiApiKey?: string;
     groqApiKey?: string;
     provider?: 'openai' | 'groq';
+    enableOverlay?: boolean;
+    pauseMediaWhileRecording?: boolean;
+    enableSpokenPunctuation?: boolean;
+    audioFeedbackTheme?: string;
+    submitKeywords?: string[];
 }
 
 /**
