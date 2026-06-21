@@ -1299,10 +1299,12 @@ class VoiceDictationServer:
         release_pid_lock()
 
     def _osd_script(self) -> str | None:
-        """Locate oflow-osd.py (next to this file, or installed alongside)."""
+        """Locate oflow-osd.py (next to this file, user install, or system pkg)."""
         candidates = [
             Path(__file__).resolve().parent / "oflow-osd.py",
             Path.home() / ".local" / "share" / "oflow" / "oflow-osd.py",
+            Path("/usr/share/oflow/oflow-osd.py"),
+            Path("/usr/lib/oflow/oflow-osd.py"),
         ]
         for path in candidates:
             if path.exists():

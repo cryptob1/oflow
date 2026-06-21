@@ -1,19 +1,29 @@
-# Maintainer: CryptoB1 <cryptob1@users.noreply.github.com>
-pkgname=oflow
-pkgver=0.1.0
+# Maintainer: cryptob1 <cryptob1@users.noreply.github.com>
+pkgname=oflow-bin
+_pkgname=oflow
+pkgver=0.2.0
 pkgrel=1
-pkgdesc="Voice-to-text for Omarchy - like Wispr Flow, but open source and local-first"
+pkgdesc="Fast, accurate voice-to-text dictation for Linux (Wayland/Hyprland), powered by Groq Whisper. Hold F8, speak, paste into any app."
 arch=('x86_64')
-url="https://github.com/CryptoB1/oflow"
+url="https://github.com/cryptob1/oflow"
 license=('MIT')
-depends=('fuse2' 'hicolor-icon-theme' 'wtype' 'webkit2gtk-4.1')
+# Runtime: ydotool (paste) + ydotoold, playerctl (media pause),
+# gtk4-layer-shell/python-gobject/python-cairo (recording overlay),
+# webkit2gtk-4.1 (Tauri UI). The AppImage bundles the Python backend.
+depends=('ydotool' 'playerctl' 'gtk4-layer-shell' 'python-gobject' 'python-cairo'
+         'webkit2gtk-4.1' 'jq' 'fuse2' 'hicolor-icon-theme')
+provides=('oflow')
+conflicts=('oflow')
+install="${_pkgname}.install"
 options=(!strip)
 
 _appimage="oflow_${pkgver}_amd64.AppImage"
-source=("${_appimage}::https://github.com/CryptoB1/oflow/releases/download/v${pkgver}/oflow_${pkgver}_amd64.AppImage"
-        "LICENSE::https://raw.githubusercontent.com/CryptoB1/oflow/v${pkgver}/LICENSE")
+source=("${_appimage}::${url}/releases/download/v${pkgver}/${_appimage}"
+        "${_pkgname}-${pkgver}.tar.gz::${url}/archive/refs/tags/v${pkgver}.tar.gz")
 noextract=("${_appimage}")
-sha256sums=('b03d38ac6f63a62c22c82cd70999053065609b6c20588197f802b764e92a729e'
+# TODO: replace SKIP with real sums once the v0.2.0 release AppImage is built:
+#   updpkgsums   (or: sha256sum oflow_0.2.0_amd64.AppImage)
+sha256sums=('SKIP'
             'SKIP')
 
 prepare() {
@@ -21,31 +31,29 @@ prepare() {
     ./"${_appimage}" --appimage-extract
 }
 
-build() {
-    # Fix desktop file to use installed path
-    sed -i "s|Exec=oflow|Exec=/usr/bin/oflow|g" squashfs-root/oflow.desktop
-    
-    # Fix permissions
-    chmod -R a-x+rX squashfs-root/usr 2>/dev/null || true
-}
-
 package() {
-    # Install AppImage to /opt
-    install -Dm755 "${srcdir}/${_appimage}" "${pkgdir}/opt/${pkgname}/${pkgname}.AppImage"
-    
-    # Symlink to /usr/bin
+    # App (Tauri UI + bundled Python backend) → /opt, launcher → /usr/bin/oflow
+    install -Dm755 "${srcdir}/${_appimage}" "${pkgdir}/opt/${_pkgname}/${_pkgname}.AppImage"
     install -dm755 "${pkgdir}/usr/bin"
-    ln -s "/opt/${pkgname}/${pkgname}.AppImage" "${pkgdir}/usr/bin/${pkgname}"
-    
-    # Desktop file
-    install -Dm644 "${srcdir}/squashfs-root/oflow.desktop" \
-        "${pkgdir}/usr/share/applications/${pkgname}.desktop"
-    
-    # Icons
+    ln -s "/opt/${_pkgname}/${_pkgname}.AppImage" "${pkgdir}/usr/bin/oflow"
+
+    cd "${srcdir}/${_pkgname}-${pkgver}"
+
+    # Recording overlay (found by the backend at /usr/share/oflow/oflow-osd.py)
+    install -Dm755 oflow-osd.py "${pkgdir}/usr/share/oflow/oflow-osd.py"
+
+    # Socket controller for the Hyprland push-to-talk keybinding
+    install -Dm755 scripts/oflow-ctl "${pkgdir}/usr/bin/oflow-ctl"
+
+    # Desktop entry + icons (from the AppImage)
+    if [[ -f "${srcdir}/squashfs-root/oflow.desktop" ]]; then
+        sed "s|^Exec=.*|Exec=/usr/bin/oflow|" "${srcdir}/squashfs-root/oflow.desktop" \
+            > "oflow.desktop.tmp"
+        install -Dm644 "oflow.desktop.tmp" "${pkgdir}/usr/share/applications/oflow.desktop"
+    fi
     if [[ -d "${srcdir}/squashfs-root/usr/share/icons" ]]; then
         cp -a "${srcdir}/squashfs-root/usr/share/icons" "${pkgdir}/usr/share/"
     fi
-    
-    # License
-    install -Dm644 "${srcdir}/LICENSE" "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
+
+    install -Dm644 LICENSE "${pkgdir}/usr/share/licenses/${_pkgname}/LICENSE"
 }

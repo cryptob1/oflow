@@ -1,0 +1,27 @@
+#!/usr/bin/env python3
+"""Send a command (start/stop/toggle) to the oflow backend over its Unix socket.
+
+Used by the Hyprland keybindings (e.g. F8 push-to-talk):
+    bind  = , F8, exec, oflow-ctl start
+    bindr = , F8, exec, oflow-ctl stop
+"""
+import socket
+import sys
+
+SOCKET_PATH = "/tmp/voice-dictation.sock"
+
+
+def send_command(cmd: str) -> None:
+    try:
+        s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        s.settimeout(1)
+        s.connect(SOCKET_PATH)
+        s.send(cmd.encode())
+        s.close()
+    except OSError:
+        pass  # backend not running yet — fail silently
+
+
+if __name__ == "__main__":
+    if len(sys.argv) > 1:
+        send_command(sys.argv[1])

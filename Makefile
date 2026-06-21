@@ -286,25 +286,7 @@ setup-autostart:
 install-oflow-ctl:
 	@echo "Installing oflow-ctl..."
 	@mkdir -p ~/.local/bin
-	@echo '#!/usr/bin/env python3' > ~/.local/bin/oflow-ctl
-	@echo '"""Simple oflow socket controller for Hyprland bindings."""' >> ~/.local/bin/oflow-ctl
-	@echo 'import socket' >> ~/.local/bin/oflow-ctl
-	@echo 'import sys' >> ~/.local/bin/oflow-ctl
-	@echo '' >> ~/.local/bin/oflow-ctl
-	@echo 'def send_command(cmd):' >> ~/.local/bin/oflow-ctl
-	@echo '    try:' >> ~/.local/bin/oflow-ctl
-	@echo '        s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)' >> ~/.local/bin/oflow-ctl
-	@echo '        s.settimeout(1)' >> ~/.local/bin/oflow-ctl
-	@echo "        s.connect('/tmp/voice-dictation.sock')" >> ~/.local/bin/oflow-ctl
-	@echo '        s.send(cmd.encode())' >> ~/.local/bin/oflow-ctl
-	@echo '        s.close()' >> ~/.local/bin/oflow-ctl
-	@echo '    except Exception:' >> ~/.local/bin/oflow-ctl
-	@echo '        pass  # Silently fail - socket might not exist' >> ~/.local/bin/oflow-ctl
-	@echo '' >> ~/.local/bin/oflow-ctl
-	@echo "if __name__ == '__main__':" >> ~/.local/bin/oflow-ctl
-	@echo '    if len(sys.argv) > 1:' >> ~/.local/bin/oflow-ctl
-	@echo '        send_command(sys.argv[1])' >> ~/.local/bin/oflow-ctl
-	@chmod +x ~/.local/bin/oflow-ctl
+	@install -m755 scripts/oflow-ctl ~/.local/bin/oflow-ctl
 	@echo "oflow-ctl installed"
 
 setup-hotkey: install-oflow-ctl
