@@ -959,19 +959,33 @@ _KEY_ENTER = "28"
 # Spoken commands that, when said at the very end of a dictation, make oflow
 # press Enter after pasting (handy for submitting prompts/chats). The keyword
 # itself is stripped from the output. Configurable via the "submitKeywords"
-# setting. Note: a dictation that genuinely ends with one of these words will
-# also submit — use a more distinctive phrase (e.g. "submit") if that bites.
-SUBMIT_KEYWORDS_DEFAULT = ["enter", "submit"]
+# setting. Defaults are distinctive imperative phrases — people don't naturally
+# *end* a dictation with "press enter" / "hit enter" unless they mean the
+# command, whereas the bare word "enter" appears in normal sentences ("the data
+# you enter"). A two-word command is what makes this robust. Add "enter" to the
+# setting yourself if you want the looser (riskier) single-word trigger.
+SUBMIT_KEYWORDS_DEFAULT = ["press enter", "hit enter", "new line and enter"]
 
 
 def extract_submit_keyword(text: str, keywords: list[str]) -> tuple[str, bool]:
-    """If *text* ends with a submit keyword, strip it and return (text, True)."""
+    """If *text* ends with a submit phrase, strip it and return (text, True).
+
+    Multi-word phrases match with flexible whitespace/case so "Press Enter",
+    "press  enter" and "press enter." all trigger. The phrase must be at the
+    very end (optionally followed by punctuation) so it only fires when the
+    user clearly tacked it on as a command.
+    """
     if not text or not keywords:
         return text, False
-    kws = "|".join(re.escape(k) for k in keywords if k)
-    if not kws:
+    parts = []
+    for kw in keywords:
+        words = [w for w in kw.split() if w]
+        if words:
+            parts.append(r"\s+".join(re.escape(w) for w in words))
+    if not parts:
         return text, False
-    m = re.search(rf"\b(?:{kws})\b[\s.!?,;:'\"]*$", text, re.IGNORECASE)
+    pattern = "|".join(parts)
+    m = re.search(rf"(?:^|\b)(?:{pattern})\b[\s.!?,;:'\"]*$", text, re.IGNORECASE)
     if m:
         return text[: m.start()].rstrip().rstrip(",.;:"), True
     return text, False

@@ -11,7 +11,7 @@ Hold F8, speak, release — your words appear wherever you're typing.
 - **One-shot paste** — Pastes the whole result at once (via ydotool), not char-by-char
 - **On-screen overlay** — Live recording level meter at the bottom of the screen
 - **Pauses your media** — Auto-pauses playing music/video while you dictate, resumes after
-- **Spoken submit** — End with "enter" (or "submit") to press Enter after pasting
+- **Spoken submit** — End with "press enter" / "hit enter" to press Enter after pasting (configurable via `submitKeywords`)
 - **Smart cleanup** — Auto-fixes grammar, removes filler words, formats text
 - **Waybar integration** — Click status icon to open settings, visual feedback while recording
 - **Spoken punctuation** — Say "period" or "new line" to insert symbols
