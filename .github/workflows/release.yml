@@ -70,26 +70,27 @@ jobs:
           tagName: ${{ github.ref_name }}
           releaseName: 'oflow ${{ github.ref_name }}'
           releaseBody: |
-            ## Install
+            ## Install (Arch / Omarchy)
 
-            ### Requirements
-            - **wtype** - for typing text into windows (Wayland)
-            
+            **One command** — installs dependencies, the app, the F8 hotkey, the
+            recording overlay, the paste daemon, and autostart:
+
             ```bash
-            sudo pacman -S wtype  # Arch/Omarchy
+            curl -fsSL https://raw.githubusercontent.com/cryptob1/oflow/master/install.sh | bash
             ```
 
-            ### Download & Run
+            Or grab the prebuilt **AppImage** below (still needs the runtime deps —
+            `sudo pacman -S ydotool playerctl gtk4-layer-shell python-gobject python-cairo`):
+
             ```bash
-            chmod +x oflow_*_amd64.AppImage
-            ./oflow_*_amd64.AppImage
+            chmod +x oflow_*_amd64.AppImage && ./oflow_*_amd64.AppImage
             ```
 
             ### Setup
             1. Get a free Groq API key: https://console.groq.com/keys
-            2. Click the microphone icon → Settings → paste your key
-            3. Press **Super+D** to start recording, press again to stop
+            2. Click the `󰍬` mic icon → Settings → paste your key
+            3. **Hold F8** to record, release to stop & paste (end with "press enter" to submit)
 
-            See [README](https://github.com/CryptoB1/oflow#readme) for full documentation.
+            See the [README](https://github.com/cryptob1/oflow#readme) for full docs.
           releaseDraft: false
           prerelease: false

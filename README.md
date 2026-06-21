@@ -53,11 +53,21 @@ curl -fsSL https://raw.githubusercontent.com/cryptob1/oflow/master/install.sh | 
 
 Installs everything — dependencies, the app, the **F8** hotkey, the recording overlay, the paste daemon, and autostart. Then paste a free [Groq API key](https://console.groq.com/keys) and hold **F8** to talk.
 
-### …or let an AI agent install it (Claude Code, Cursor, etc.)
+### …or have Claude Code (or any AI agent) install it for you
 
-Paste this into your terminal AI agent:
+Open your terminal AI agent (Claude Code, Cursor, Aider, …) and paste this prompt **verbatim**:
 
-> Install **oflow** (voice dictation) from `https://github.com/cryptob1/oflow` on this Arch/Omarchy machine: run its `install.sh` from the `master` branch, make sure the `ydotoold` user service is enabled, then tell me to paste my Groq API key in Settings and hold **F8** to dictate.
+```text
+Install oflow (voice dictation for Linux) from https://github.com/cryptob1/oflow on
+this Arch/Omarchy machine:
+1. Run: curl -fsSL https://raw.githubusercontent.com/cryptob1/oflow/master/install.sh | bash
+2. Make sure the ydotoold user service is enabled (systemctl --user enable --now ydotool.service).
+3. Then ask me for my Groq API key (https://console.groq.com/keys), write it to
+   ~/.oflow/settings.json as "groqApiKey", and restart oflow.
+4. Tell me to hold F8 to dictate.
+```
+
+That's the whole setup, hands‑off — the agent installs everything and wires in your key.
 
 <details>
 <summary><b>Manual install / full dependency list</b></summary>
