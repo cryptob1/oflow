@@ -832,9 +832,9 @@ async def transcribe_audio(
 
     if provider == "groq":
         url = GROQ_WHISPER_URL
-        # distil-whisper is Groq's fastest model (English-only), ~2x faster than
-        # large-v3-turbo with minimal accuracy loss for English dictation.
-        model = os.getenv("OFLOW_WHISPER_MODEL", "distil-whisper-large-v3-en")
+        # whisper-large-v3-turbo is Groq's fastest available speech model
+        # (distil-whisper was decommissioned). Override with OFLOW_WHISPER_MODEL.
+        model = os.getenv("OFLOW_WHISPER_MODEL", "whisper-large-v3-turbo")
     else:
         url = OPENAI_WHISPER_URL
         model = "whisper-1"
