@@ -10,12 +10,17 @@ import { useToast } from "@/components/ui/toast";
 
 // Mirrors SPOKEN_ACTIONS in oflow.py. Shown read-only so users can see what
 // they can say; the backend is the source of truth for what actually fires.
+// {w} is replaced with the configured wake word at render time.
 const SPOKEN_COMMANDS: { say: string; does: string; key: string }[] = [
-    { say: "“new line” / “next line”", does: "Press Enter", key: "↵" },
-    { say: "“new paragraph”", does: "Press Enter twice", key: "¶" },
-    { say: "“press enter” / “hit enter”", does: "Press Enter", key: "↵" },
-    { say: "“press tab” / “tab key”", does: "Press Tab", key: "⇥" },
-    { say: "“press escape” / “escape key”", does: "Press Esc", key: "⎋" },
+    { say: "“{w} enter” / “send it”", does: "Press Enter", key: "↵" },
+    { say: "“{w} new line”", does: "Press Enter", key: "↵" },
+    { say: "“{w} new paragraph”", does: "Press Enter twice", key: "¶" },
+    { say: "“{w} tab”", does: "Press Tab", key: "⇥" },
+    { say: "“{w} escape”", does: "Press Esc", key: "⎋" },
+    { say: "“{w} scratch that”", does: "Delete last dictation", key: "⌫" },
+    { say: "“{w} select all”", does: "Ctrl+A", key: "⌘" },
+    { say: "“{w} undo” / “redo”", does: "Ctrl+Z / Ctrl+Shift+Z", key: "↶" },
+    { say: "“{w} delete word”", does: "Delete previous word", key: "⌫" },
 ];
 
 export function SettingsView() {
@@ -33,6 +38,8 @@ export function SettingsView() {
     const [groqKeyInput, setGroqKeyInput] = useState("");
     const [submitKeywordsInput, setSubmitKeywordsInput] = useState("press enter, hit enter");
     const [fastWordsInput, setFastWordsInput] = useState("8");
+    const [wakeWordInput, setWakeWordInput] = useState("oflow");
+    const wakeWord = (settings.commandWakeWord || "oflow").trim() || "oflow";
 
     useEffect(() => {
         const load = async () => {
@@ -51,6 +58,9 @@ export function SettingsView() {
                 }
                 if (typeof loadedSettings.fastModeMaxWords === "number" && loadedSettings.fastModeMaxWords > 0) {
                     setFastWordsInput(String(loadedSettings.fastModeMaxWords));
+                }
+                if (loadedSettings.commandWakeWord) {
+                    setWakeWordInput(loadedSettings.commandWakeWord);
                 }
             } catch (error) {
                 console.error("Failed to load settings:", error);
@@ -84,6 +94,12 @@ export function SettingsView() {
         const clamped = Number.isFinite(n) && n > 0 ? n : 8;
         setFastWordsInput(String(clamped));
         await handleSettingChange("fastModeMaxWords", clamped);
+    };
+
+    const handleSaveWakeWord = async () => {
+        const w = wakeWordInput.trim().toLowerCase() || "oflow";
+        setWakeWordInput(w);
+        await handleSettingChange("commandWakeWord", w);
     };
 
     const handleClearHistory = async () => {
@@ -376,22 +392,33 @@ export function SettingsView() {
                             <Keyboard className="h-5 w-5" />
                             Spoken Commands
                         </CardTitle>
-                        <CardDescription>Say a command mid-dictation and oflow presses the real key.</CardDescription>
+                        <CardDescription>Say the wake word + a command and oflow presses the real key — anywhere in a dictation.</CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-4">
                         <div className="flex items-center justify-between space-x-2">
                             <div className="space-y-1">
                                 <Label htmlFor="actions">Enable spoken commands</Label>
-                                <p className="text-sm text-muted-foreground">Turn the phrases below into real keystrokes (Enter, Tab, Esc). Needs ydotool.</p>
+                                <p className="text-sm text-muted-foreground">Turn “{wakeWord} …” phrases into real keystrokes. Needs ydotool.</p>
                             </div>
                             <Switch id="actions" checked={settings.enableSpokenActions ?? true}
                                 onCheckedChange={(c) => handleSettingChange("enableSpokenActions", c)} disabled={isLoading} />
                         </div>
 
+                        <div className={`space-y-2 ${(settings.enableSpokenActions ?? true) ? '' : 'opacity-50'}`}>
+                            <Label htmlFor="wakeword">Wake word</Label>
+                            <p className="text-sm text-muted-foreground">Every command starts with this word, so normal speech is never mistaken for a command. Default “oflow”; pick something Whisper hears reliably.</p>
+                            <div className="flex gap-2">
+                                <Input id="wakeword" className="w-40" value={wakeWordInput}
+                                    onChange={(e) => setWakeWordInput(e.target.value)}
+                                    placeholder="oflow" disabled={isLoading || !(settings.enableSpokenActions ?? true)} />
+                                <Button onClick={handleSaveWakeWord} disabled={isLoading || !(settings.enableSpokenActions ?? true)}>Save</Button>
+                            </div>
+                        </div>
+
                         <div className={`rounded-lg border divide-y ${(settings.enableSpokenActions ?? true) ? '' : 'opacity-50'}`}>
                             {SPOKEN_COMMANDS.map((cmd) => (
                                 <div key={cmd.say} className="flex items-center justify-between gap-3 px-3 py-2">
-                                    <span className="text-sm">{cmd.say}</span>
+                                    <span className="text-sm">{cmd.say.replace(/\{w\}/g, wakeWord)}</span>
                                     <span className="flex items-center gap-2 text-sm text-muted-foreground">
                                         {cmd.does}
                                         <kbd className="px-2 py-0.5 rounded bg-muted font-mono text-foreground">{cmd.key}</kbd>
@@ -400,7 +427,7 @@ export function SettingsView() {
                             ))}
                         </div>
                         <p className="text-xs text-muted-foreground">
-                            Two-word phrases are used on purpose, so ordinary speech like “the data you enter” stays literal text.
+                            Requiring “{wakeWord}” first means ordinary speech like “select all the files” stays literal text — only “{wakeWord} select all” fires the command.
                         </p>
                     </CardContent>
                 </Card>

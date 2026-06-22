@@ -23,7 +23,8 @@ Built for **Wayland**, **Hyprland**, and **Omarchy**. Open source, transcripts s
 - **One-shot paste** — Pastes the whole result at once (via ydotool), not char-by-char
 - **On-screen overlay** — Live recording level meter at the bottom of the screen
 - **Pauses your media** — Auto-pauses playing music/video while you dictate, resumes after
-- **Spoken submit** — End with "press enter" / "hit enter" to press Enter after pasting (configurable via `submitKeywords`)
+- **Voice commands** — Say "oflow scratch that", "oflow select all", "oflow enter" and oflow presses the real keys ([see below](#-voice-commands))
+- **Fast mode** — Skips AI cleanup on short dictations for instant output
 - **Smart cleanup** — Auto-fixes grammar, removes filler words, formats text
 - **Waybar integration** — Click status icon to open settings, visual feedback while recording
 - **Spoken punctuation** — Say "period" or "new line" to insert symbols
@@ -104,6 +105,24 @@ Hold F8 → Speak → Release → Text appears in active window
 |---------|---------|
 | "um so like send an email to john" | "Send an email to John." |
 | "first buy milk second call mom" | "First, buy milk. Second, call mom." |
+
+## 🎙️ Voice commands
+
+Dictation is more than typing — say **"oflow"** followed by a command and oflow presses the real keys, anywhere in a sentence:
+
+| Say… | …and oflow does |
+|------|-----------------|
+| **"oflow scratch that"** | deletes your last dictation — the magic undo |
+| **"oflow enter"** / **"oflow send it"** | presses Enter (submit a chat or prompt) |
+| **"oflow new line"** / **"oflow new paragraph"** | inserts a real line break |
+| **"oflow select all"** | Ctrl+A |
+| **"oflow undo"** / **"oflow redo"** | Ctrl+Z / Ctrl+Shift+Z |
+| **"oflow delete word"** | deletes the previous word |
+| **"oflow tab"** / **"oflow escape"** | Tab / Esc |
+
+**Why the wake word?** Requiring **"oflow"** first is what makes it safe: ordinary speech like *"select all the files"* stays literal text — only *"oflow select all"* fires the command. So you never have to think about whether a phrase will be misread.
+
+The wake word is configurable in **Settings → Spoken Commands** (default `oflow`), and the recording overlay rotates a hint each time so the commands are easy to discover.
 
 ## Tech Stack
 

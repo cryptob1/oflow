@@ -209,6 +209,7 @@ def load_settings() -> dict:
                     "enableOverlay": settings.get("enableOverlay", True),
                     "submitKeywords": settings.get("submitKeywords", SUBMIT_KEYWORDS_DEFAULT),
                     "enableSpokenActions": settings.get("enableSpokenActions", True),
+                    "commandWakeWord": settings.get("commandWakeWord", DEFAULT_WAKE_WORD),
                     "fastModeMaxWords": settings.get("fastModeMaxWords", DEFAULT_FAST_MODE_MAX_WORDS),
                 }
     except json.JSONDecodeError as e:
@@ -1015,10 +1016,19 @@ _KEY_V = "47"
 _KEY_ENTER = "28"
 _KEY_TAB = "15"
 _KEY_ESC = "1"
+_KEY_A = "30"
+_KEY_Z = "44"
+_KEY_BACKSPACE = "14"
+
 
 # A "tap" of a single key = press then release, as ydotool 'key' args.
 def _tap(code: str) -> list[str]:
     return [f"{code}:1", f"{code}:0"]
+
+
+# A chord = press all codes in order, release in reverse (e.g. Ctrl+Shift+Z).
+def _chord(*codes: str) -> list[str]:
+    return [f"{c}:1" for c in codes] + [f"{c}:0" for c in reversed(codes)]
 
 # Spoken commands that, when said at the very end of a dictation, make oflow
 # press Enter after pasting (handy for submitting prompts/chats). The keyword
@@ -1206,50 +1216,86 @@ def type_text(text: str) -> None:
 
 
 # ============================================================================
-# Spoken Actions (say a command, oflow presses the real key)
+# Spoken Actions (say the wake word + a command, oflow presses the real key)
 # ============================================================================
 #
-# Unlike spoken *punctuation* (which inserts a character like "." or "\n"),
-# spoken *actions* send a real keystroke through ydotool — so "new line" in a
-# chat box submits-then-newlines exactly as if you pressed Enter, and "press
-# tab" moves between form fields. Actions can appear anywhere in a dictation,
-# not just at the end, and the spoken phrase is removed from the typed text.
-#
-# Phrases are deliberately two words. A bare "enter"/"tab" appears in ordinary
-# speech ("the data you enter", "keep tabs on it"); a two-word imperative like
-# "press enter" almost never does, which is what keeps this from misfiring.
+# Every command is "<wake word> <command>" — e.g. "oflow enter", "oflow scratch
+# that", "oflow select all". Requiring the wake word is what makes this safe:
+# nobody says "oflow" mid-sentence, so a command only fires when you mean it, and
+# the command words are consumed (not typed). The wake word is fuzzy-matched
+# because Whisper renders the coined word "oflow" inconsistently, and it is
+# user-configurable (commandWakeWord).
+DEFAULT_WAKE_WORD = "oflow"
+
+# Plausible Whisper transcriptions of "oflow" that are also unlikely to appear
+# right before a command word in ordinary speech. Used only for the default wake
+# word; a custom wake word is matched literally (case-insensitive). Tune after
+# hearing what Whisper actually produces.
+_OFLOW_WAKE_VARIANTS = ["oflow", "oflo", "o flow", "oh flow", "off flow"]
+
+# Each action: "action" is "keys" (send chords) or "scratch" (delete last output).
 SPOKEN_ACTIONS = [
-    {"phrases": ["new paragraph"], "label": "¶", "keys": [_tap(_KEY_ENTER), _tap(_KEY_ENTER)]},
-    {"phrases": ["new line", "next line"], "label": "↵", "keys": [_tap(_KEY_ENTER)]},
-    {"phrases": ["press enter", "hit enter"], "label": "↵", "keys": [_tap(_KEY_ENTER)]},
-    {"phrases": ["press tab", "tab key"], "label": "⇥", "keys": [_tap(_KEY_TAB)]},
-    {"phrases": ["press escape", "escape key"], "label": "⎋", "keys": [_tap(_KEY_ESC)]},
+    {"phrases": ["scratch that", "delete that"], "action": "scratch", "label": "⌫ scratch"},
+    {"phrases": ["new paragraph"], "action": "keys", "label": "¶ paragraph", "keys": [_tap(_KEY_ENTER), _tap(_KEY_ENTER)]},
+    {"phrases": ["new line", "next line"], "action": "keys", "label": "↵ new line", "keys": [_tap(_KEY_ENTER)]},
+    {"phrases": ["enter", "return", "send it", "send", "submit"], "action": "keys", "label": "↵ enter", "keys": [_tap(_KEY_ENTER)]},
+    {"phrases": ["tab"], "action": "keys", "label": "⇥ tab", "keys": [_tap(_KEY_TAB)]},
+    {"phrases": ["escape", "cancel"], "action": "keys", "label": "⎋ escape", "keys": [_tap(_KEY_ESC)]},
+    {"phrases": ["select all"], "action": "keys", "label": "select all", "keys": [_chord(_KEY_LEFTCTRL, _KEY_A)]},
+    {"phrases": ["undo that", "undo"], "action": "keys", "label": "↶ undo", "keys": [_chord(_KEY_LEFTCTRL, _KEY_Z)]},
+    {"phrases": ["redo that", "redo"], "action": "keys", "label": "↷ redo", "keys": [_chord(_KEY_LEFTCTRL, _KEY_LEFTSHIFT, _KEY_Z)]},
+    {"phrases": ["delete word"], "action": "keys", "label": "⌫ word", "keys": [_chord(_KEY_LEFTCTRL, _KEY_BACKSPACE)]},
 ]
 
 
-def _build_action_pattern(specs: list[dict]) -> re.Pattern | None:
-    """Compile one regex matching any action phrase, tagging which spec hit."""
-    parts = []
+def _wake_pattern(wake_word: str) -> str:
+    """Regex fragment matching the wake word (fuzzy for the default 'oflow')."""
+    word = (wake_word or DEFAULT_WAKE_WORD).strip()
+    alts = _OFLOW_WAKE_VARIANTS if word.lower() == DEFAULT_WAKE_WORD else [word]
+    return "(?:" + "|".join(r"\s+".join(re.escape(w) for w in a.split()) for a in alts) + ")"
+
+
+def _compile_actions(specs: list[dict], wake_word: str):
+    """Compile a regex matching '<wake> <command>' and a group->spec index map.
+
+    Command phrases are ordered longest-first so "undo that" wins over "undo".
+    """
+    indexed = []
     for i, spec in enumerate(specs):
-        alts = [r"\s+".join(re.escape(w) for w in ph.split()) for ph in spec["phrases"]]
-        parts.append(f"(?P<a{i}>" + "|".join(alts) + ")")
+        for ph in spec["phrases"]:
+            indexed.append((i, ph))
+    indexed.sort(key=lambda t: -len(t[1].split()))
+    group_to_spec = {}
+    parts = []
+    for k, (i, ph) in enumerate(indexed):
+        g = f"a{k}"
+        group_to_spec[g] = i
+        parts.append(f"(?P<{g}>" + r"\s+".join(re.escape(w) for w in ph.split()) + ")")
     if not parts:
-        return None
-    return re.compile(r"\b(?:" + "|".join(parts) + r")\b", re.IGNORECASE)
+        return None, {}
+    # Separator tolerates a comma the cleanup LLM may insert after the wake word
+    # ("Oflow, scratch that") but not a period — a sentence boundary shouldn't
+    # let a command leak across clauses.
+    pattern = re.compile(
+        rf"\b{_wake_pattern(wake_word)}[\s,]+(?:" + "|".join(parts) + r")\b",
+        re.IGNORECASE,
+    )
+    return pattern, group_to_spec
 
 
 def segment_spoken_actions(
-    text: str, specs: list[dict] = SPOKEN_ACTIONS
+    text: str, specs: list[dict] = SPOKEN_ACTIONS, wake_word: str = DEFAULT_WAKE_WORD
 ) -> list[tuple]:
     """Split *text* into an ordered list of segments to replay in place.
 
-    Each segment is either ("text", str) or ("key", keys, label). Whitespace and
-    a stray punctuation mark left flush against a removed command are trimmed so
-    "do it, press enter" yields [text "do it"] + [key Enter], not a dangling
-    " ," before the keystroke. Returns a single text segment when no command is
-    present (the overwhelmingly common case), so normal dictation is untouched.
+    A command is "<wake> <phrase>"; everything else is literal text. Segments are
+    ("text", str), ("key", keys, label), or ("scratch", label). Whitespace and a
+    stray punctuation mark left flush against a removed command are trimmed so
+    "do it, oflow enter" yields [text "do it"] + [key Enter]. Returns a single
+    text segment when no command is present (the common case), so normal
+    dictation — including the literal word "oflow" — is untouched.
     """
-    pattern = _build_action_pattern(specs)
+    pattern, group_to_spec = _compile_actions(specs, wake_word)
     if not text or pattern is None:
         return [("text", text)]
 
@@ -1258,25 +1304,29 @@ def segment_spoken_actions(
     for m in pattern.finditer(text):
         if m.start() > pos:
             raw_segments.append(("text", text[pos:m.start()]))
-        idx = next(i for i in range(len(specs)) if m.group(f"a{i}") is not None)
-        raw_segments.append(("key", specs[idx]["keys"], specs[idx]["label"]))
+        g = next(g for g in group_to_spec if m.group(g) is not None)
+        spec = specs[group_to_spec[g]]
+        if spec["action"] == "scratch":
+            raw_segments.append(("scratch", spec["label"]))
+        else:
+            raw_segments.append(("key", spec["keys"], spec["label"]))
         pos = m.end()
     if pos < len(text):
         raw_segments.append(("text", text[pos:]))
 
-    if not any(seg[0] == "key" for seg in raw_segments):
+    if not any(seg[0] != "text" for seg in raw_segments):
         return [("text", text)]
 
-    # Trim whitespace/orphan punctuation at text↔key boundaries.
+    # Trim whitespace/orphan punctuation at text↔command boundaries.
     cleaned: list[tuple] = []
     for i, seg in enumerate(raw_segments):
         if seg[0] != "text":
             cleaned.append(seg)
             continue
         s = seg[1]
-        if i > 0 and raw_segments[i - 1][0] == "key":
+        if i > 0 and raw_segments[i - 1][0] != "text":
             s = s.lstrip(" \t.,;:!?")  # drop a mark stranded after a command
-        if i + 1 < len(raw_segments) and raw_segments[i + 1][0] == "key":
+        if i + 1 < len(raw_segments) and raw_segments[i + 1][0] != "text":
             s = s.rstrip(" \t")
         if s:
             cleaned.append(("text", s))
@@ -1297,28 +1347,64 @@ def _send_keys(key_chords: list[list[str]]) -> None:
         time.sleep(0.01)
 
 
-def output_with_actions(text: str) -> None:
-    """Type *text*, executing any spoken-action commands as real keystrokes.
+# Cap so a runaway count can't hammer the keyboard for seconds.
+_MAX_SCRATCH_BACKSPACES = 2000
 
-    Fast path: when the dictation has no commands, this is a single paste —
-    identical to type_text. With commands, it pastes each text run and presses
-    the requested key between runs, in order.
+
+def _send_backspaces(n: int) -> None:
+    """Delete the last n characters with a single batched ydotool Backspace run."""
+    n = min(n, _MAX_SCRATCH_BACKSPACES)
+    if n <= 0:
+        return
+    chord = []
+    for _ in range(n):
+        chord += _tap(_KEY_BACKSPACE)
+    try:
+        subprocess.run(
+            ["ydotool", "key", *chord],
+            check=True, stderr=subprocess.DEVNULL, timeout=10,
+        )
+    except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired) as e:
+        logger.warning(f"_send_backspaces failed (ydotool): {e}")
+
+
+def output_with_actions(text: str, wake_word: str = DEFAULT_WAKE_WORD, prev_chars: int = 0) -> int:
+    """Type *text*, executing wake-word commands as real keystrokes.
+
+    Returns the net number of characters this call left on screen, so the caller
+    can persist it and let a later "scratch that" delete across dictations.
+    prev_chars seeds that history (what a leading "scratch that" should remove).
+
+    Fast path: a dictation with no commands is a single paste — identical to
+    type_text.
     """
-    segments = segment_spoken_actions(text)
+    segments = segment_spoken_actions(text, wake_word=wake_word)
     if len(segments) == 1 and segments[0][0] == "text":
         type_text(segments[0][1])
-        return
+        return len(segments[0][1])
+
+    last_run = prev_chars  # characters a "scratch" can remove right now
+    net = prev_chars
     for kind, *rest in segments:
         if kind == "text":
             run = rest[0]
             if run:
                 type_text(run)
                 time.sleep(0.03)  # let the paste land before the next keystroke
-        else:
+                last_run = len(run)
+                net += len(run)
+        elif kind == "scratch":
+            _send_backspaces(last_run)
+            logger.info(f"Spoken action: scratch ({last_run} chars)")
+            net -= last_run
+            last_run = 0
+            time.sleep(0.03)
+        else:  # key
             keys, label = rest
             _send_keys(keys)
             logger.info(f"Spoken action: {label}")
             time.sleep(0.03)
+    return max(0, net)
 
 
 # ============================================================================
@@ -1345,6 +1431,9 @@ class VoiceDictationServer:
         # Bounded queue: max 3000 chunks = ~300 seconds (5 minutes) at 10 chunks/sec (prevents memory leak)
         self.audio_queue: queue.Queue[np.ndarray] = queue.Queue(maxsize=3000)
         self.audio_data: list[np.ndarray] = []
+        # Characters left on screen by the last dictation, so "scratch that" in a
+        # following dictation can delete them.
+        self._last_output_chars = 0
 
         # Load settings
         settings = load_settings()
@@ -1834,6 +1923,7 @@ class VoiceDictationServer:
         api_key = settings.get("groqApiKey") if provider == "groq" else settings.get("openaiApiKey")
         enable_cleanup = settings.get("enableCleanup", True)
         enable_actions = settings.get("enableSpokenActions", True)
+        wake_word = settings.get("commandWakeWord", DEFAULT_WAKE_WORD)
         fast_max_words = settings.get("fastModeMaxWords", DEFAULT_FAST_MODE_MAX_WORDS)
 
         if not api_key:
@@ -1914,10 +2004,12 @@ class VoiceDictationServer:
                     f"<= {fast_max_words})"
                 )
 
-        # Output: run spoken-action commands as real keystrokes (default), or
-        # paste-and-optionally-submit on the legacy path.
+        # Output: run "<wake word> command" voice commands as real keystrokes
+        # (default), or paste-and-optionally-submit on the legacy path.
         if enable_actions:
-            output_with_actions(cleaned_text)
+            self._last_output_chars = output_with_actions(
+                cleaned_text, wake_word, self._last_output_chars
+            )
         else:
             type_text(cleaned_text)
             if submit:
