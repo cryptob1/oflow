@@ -1456,11 +1456,13 @@ def _compile_actions(specs: list[dict], wake_word: str):
         parts.append(f"(?P<{g}>" + r"\s+".join(re.escape(w) for w in ph.split()) + ")")
     if not parts:
         return None, {}
-    # Separator tolerates a comma the cleanup LLM may insert after the wake word
-    # ("Oflow, scratch that") but not a period — a sentence boundary shouldn't
-    # let a command leak across clauses.
+    # Separator tolerates punctuation the STT model inserts after the wake word.
+    # Accurate models (ElevenLabs Scribe) punctuate mid-utterance, writing
+    # "Jarvis. Enter." or "Jarvis, scratch that" — so a comma OR a period (or
+    # other sentence marks) between the wake word and the command must still
+    # match. The wake word itself is the guard against accidental triggers.
     pattern = re.compile(
-        rf"\b{_wake_pattern(wake_word)}[\s,]+(?:" + "|".join(parts) + r")\b",
+        rf"\b{_wake_pattern(wake_word)}[\s.,;:!?]+(?:" + "|".join(parts) + r")\b",
         re.IGNORECASE,
     )
     return pattern, group_to_spec
