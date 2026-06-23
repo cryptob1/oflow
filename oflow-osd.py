@@ -12,7 +12,6 @@ an idle timeout, as a safety net).
 
 Requires: gtk4, gtk4-layer-shell, python-gobject, python-cairo.
 """
-import json
 import math
 import os
 import socket
@@ -27,53 +26,13 @@ import cairo  # noqa: E402
 
 RUNTIME_DIR = os.path.join(os.environ.get("XDG_RUNTIME_DIR", "/tmp"), "oflow")
 SOCK_PATH = os.path.join(RUNTIME_DIR, "osd.sock")
-SETTINGS_FILE = os.path.join(os.path.expanduser("~"), ".oflow", "settings.json")
-TIP_INDEX_FILE = os.path.join(RUNTIME_DIR, "tip_index")
 
 PILL_H = 54           # the meter capsule
-TIP_H = 22            # the tip line beneath it
-WIDTH, HEIGHT = 340, PILL_H + TIP_H
+WIDTH, HEIGHT = 340, PILL_H
 PAD = 14
 N_BARS = 42
 IDLE_TIMEOUT_US = 2_000_000  # exit if no packet for 2s (backend died / missed stop)
 FPS_MS = 16  # ~60fps
-
-DEFAULT_WAKE_WORD = "jarvis"
-# Rotating hints shown under the meter. {w} is the configured wake word, so the
-# overlay always teaches the trigger word and a couple of commands while you talk.
-TIP_TEMPLATES = [
-    'say  "{w} scratch that"  to undo your last dictation',
-    'say  "{w} enter"  ·  "{w} new line"  ·  "{w} new paragraph"',
-    'say  "{w} select all"  ·  "{w} undo"  ·  "{w} delete word"',
-    'say  "{w} tab"  to jump fields  ·  "{w} escape"  to cancel',
-]
-
-
-def _load_wake_word():
-    try:
-        with open(SETTINGS_FILE) as f:
-            w = (json.load(f).get("commandWakeWord") or "").strip()
-            return w or DEFAULT_WAKE_WORD
-    except (OSError, ValueError):
-        return DEFAULT_WAKE_WORD
-
-
-def _next_tip(wake_word):
-    """Pick the next tip, rotating across recordings via a small counter file."""
-    idx = 0
-    try:
-        with open(TIP_INDEX_FILE) as f:
-            idx = int(f.read().strip() or "0")
-    except (OSError, ValueError):
-        idx = 0
-    try:
-        os.makedirs(RUNTIME_DIR, exist_ok=True)
-        with open(TIP_INDEX_FILE, "w") as f:
-            f.write(str((idx + 1) % len(TIP_TEMPLATES)))
-    except OSError:
-        pass
-    return TIP_TEMPLATES[idx % len(TIP_TEMPLATES)].format(w=wake_word)
-
 
 class Osd(Gtk.Application):
     def __init__(self):
@@ -86,7 +45,6 @@ class Osd(Gtk.Application):
         self.fade = 1.0                # 1.0 visible -> 0.0 gone (on stop)
         self.pulse = 0.0               # recording-dot pulse phase
         self.sock = None
-        self.tip = _next_tip(_load_wake_word())  # hint shown under the meter
 
     # ------------------------------------------------------------------ setup
     def do_activate(self):
@@ -199,14 +157,10 @@ class Osd(Gtk.Application):
         cr.paint()
         cr.set_operator(cairo.OPERATOR_OVER)
 
-        ph = PILL_H  # the meter capsule lives in the top PILL_H; tip sits below
+        ph = PILL_H  # the meter capsule fills the whole overlay
 
-        # Rounded pill background (top capsule only)
-        r = ph / 2
-        cr.new_sub_path()
-        cr.arc(r, r, r, math.pi / 2, 3 * math.pi / 2)
-        cr.arc(w - r, r, r, -math.pi / 2, math.pi / 2)
-        cr.close_path()
+        # Rounded pill background
+        self._round_rect(cr, 0.5, 0.5, w - 1, h - 1, ph / 2)
         cr.set_source_rgba(0.09, 0.10, 0.15, 0.92 * a)
         cr.fill_preserve()
         cr.set_source_rgba(1, 1, 1, 0.06 * a)
@@ -239,18 +193,6 @@ class Osd(Gtk.Application):
             cr.set_source_rgba(0.40 + 0.45 * t, 0.74, 0.99, (0.35 + 0.6 * t) * a)
             self._round_rect(cr, x, mid - bh / 2, bar_w, bh, bar_w / 2)
             cr.fill()
-
-        # Rotating tip line beneath the pill (teaches the wake word + commands)
-        if self.tip:
-            cr.select_font_face("sans-serif", cairo.FONT_SLANT_NORMAL, cairo.FONT_WEIGHT_NORMAL)
-            cr.set_font_size(11)
-            text = "💡 " + self.tip
-            ext = cr.text_extents(text)
-            tx = (w - ext.width) / 2 - ext.x_bearing
-            ty = ph + (TIP_H + ext.height) / 2 - 1
-            cr.move_to(tx, ty)
-            cr.set_source_rgba(0.85, 0.88, 0.95, 0.72 * a)
-            cr.show_text(text)
 
     @staticmethod
     def _round_rect(cr, x, y, w, h, r):
