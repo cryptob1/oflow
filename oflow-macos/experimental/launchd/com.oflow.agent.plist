@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<!-- Experimental: LaunchAgent support is not officially supported yet. -->
+<dict>
+    <key>Label</key>
+    <string>com.oflow.agent</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>VENV_PYTHON_PATH</string>
+        <string>OFLOW_MACOS_PY_PATH</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <string>OFLOW_MACOS_DIR_PATH</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PYTHONUNBUFFERED</key>
+        <string>1</string>
+    </dict>
+    <key>LimitLoadToSessionType</key>
+    <string>Aqua</string>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>/tmp/oflow.stdout.log</string>
+    <key>StandardErrorPath</key>
+    <string>/tmp/oflow.stderr.log</string>
+</dict>
+</plist>

@@ -1,0 +1,62 @@
+[project]
+name = "oflow-macos"
+version = "0.1.0"
+description = "Voice dictation for macOS with local whisper.cpp (no API key needed)"
+readme = "README.md"
+license = { file = "../LICENSE" }
+requires-python = ">=3.11"
+keywords = ["voice", "dictation", "macos", "stt", "speech-to-text", "whisper", "whisper.cpp"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: MacOS",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Multimedia :: Sound/Audio :: Speech",
+    "Topic :: Text Processing",
+]
+dependencies = [
+    "sounddevice>=0.4.6",
+    "numpy>=1.24.0",
+    "pynput>=1.8.1",
+    "rumps>=0.4.0",
+    "pywhispercpp>=1.4.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-cov>=4.0.0",
+    "ruff>=0.7.0",
+]
+
+[project.scripts]
+oflow-macos = "oflow_macos:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+only-include = ["oflow_macos.py"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_functions = ["test_*"]
+markers = [
+    "unit: Unit tests (no external dependencies)",
+    "integration: Integration tests (require API keys)",
+]
+addopts = "-m unit -v"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "C4", "UP"]
+ignore = ["E501"]

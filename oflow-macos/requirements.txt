@@ -1,0 +1,5 @@
+sounddevice>=0.4.6
+numpy>=1.24.0
+pynput>=1.8.1
+rumps>=0.4.0
+pywhispercpp>=1.4.0
