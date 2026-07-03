@@ -1992,8 +1992,9 @@ class VoiceDictationServer:
                 ["pactl", "set-source-volume", "@DEFAULT_SOURCE@", level],
                 stderr=subprocess.DEVNULL,
                 check=False,
+                timeout=2,
             )
-        except FileNotFoundError:
+        except (FileNotFoundError, subprocess.TimeoutExpired):
             pass
 
     def _start_recording(self):
@@ -2007,10 +2008,21 @@ class VoiceDictationServer:
             self.audio_data = []
             self._last_stream_warn = 0.0
 
-            # Re-assert mic gain — other apps/AGC may have lowered it since last time.
-            self._set_mic_volume()
-
             try:
+                # Load settings up front so the overlay can be shown *before* any
+                # audio setup. The OSD is a decoupled subprocess; making it wait
+                # behind mic-gain and stream-open work makes it lag the keypress.
+                settings = load_settings()
+
+                # Show the on-screen recording overlay first, so it appears the
+                # instant the hotkey is pressed. Everything below warms up behind
+                # it (Popen returns immediately; the overlay renders in parallel).
+                if settings.get("enableOverlay", True):
+                    self._start_osd()
+
+                # Re-assert mic gain — other apps/AGC may have lowered it since last time.
+                self._set_mic_volume()
+
                 # Start audio stream on-demand (saves CPU when idle).
                 # Self-heals a stale PortAudio device list (e.g. after a
                 # PipeWire/WirePlumber restart) by reinitializing and retrying.
@@ -2023,8 +2035,6 @@ class VoiceDictationServer:
                 # so a keep-alive that expired during idle is hot by release.
                 self._schedule_on_loop(self._prewarm_connection())
 
-                # Reload settings in case they changed
-                settings = load_settings()
                 self.text_processor = TextProcessor(
                     enable_punctuation=settings.get("enableSpokenPunctuation", False),
                     replacements=settings.get("wordReplacements", {}),
@@ -2032,10 +2042,6 @@ class VoiceDictationServer:
                 # Pick up audio-feedback changes live (e.g. turning sounds off)
                 self.audio_feedback.theme = settings.get("audioFeedbackTheme", "default")
                 self.audio_feedback.volume = max(0.0, min(1.0, settings.get("audioFeedbackVolume", 0.3)))
-
-                # Show the on-screen recording overlay
-                if settings.get("enableOverlay", True):
-                    self._start_osd()
 
                 # Pause any playing music/video so it doesn't bleed into the mic
                 if settings.get("pauseMediaWhileRecording", True):
