@@ -1868,6 +1868,11 @@ class VoiceDictationServer:
         # the focused app (default); "note" saves to the second-brain vault. A
         # `note` command mid-recording (Copilot+N) flips it; reset on every start.
         self._capture_mode = "dictation"
+        # A hands-free note session: True between the first Copilot+N (start) and
+        # the second (stop & save). While set, the Copilot key *release* does NOT
+        # stop the recording — only a second Copilot+N does — so the user needn't
+        # hold the combo. Reset on every start and stop.
+        self._note_session = False
 
         # Load settings
         settings = load_settings()
@@ -2335,9 +2340,10 @@ class VoiceDictationServer:
 
             self.audio_data = []
             self._last_stream_warn = 0.0
-            # Every recording starts as dictation; a `note` command during the
-            # hold (Copilot+N) reclassifies it before stop.
+            # Every recording starts as dictation; a `note` command (Copilot+N)
+            # converts it into a hands-free note session before stop.
             self._capture_mode = "dictation"
+            self._note_session = False
 
             try:
                 # Load settings up front so the overlay can be shown *before* any
@@ -2617,6 +2623,10 @@ class VoiceDictationServer:
                 logger.debug("Not recording, ignoring stop command")
                 return
 
+            # Whatever stopped us (toggle, Copilot release, or the watchdog),
+            # the note session is over — clear it so the next start is clean.
+            self._note_session = False
+
             if self._recording_watchdog is not None:
                 self._recording_watchdog.cancel()
                 self._recording_watchdog = None
@@ -2875,20 +2885,35 @@ class VoiceDictationServer:
                     if cmd == "start" and not self.is_recording:
                         self._start_recording()
                     elif cmd == "stop" and self.is_recording:
-                        self._stop_recording()
+                        # In a hands-free note session, releasing the Copilot key
+                        # must NOT stop the recording — the session ends only on a
+                        # second Copilot+N (the `note` toggle below).
+                        if not self._note_session:
+                            self._stop_recording()
                     elif cmd == "toggle":
                         if self.is_recording:
                             self._stop_recording()
                         else:
                             self._start_recording()
                     elif cmd == "note":
-                        # Reclassify the in-flight recording as a note (Copilot+N):
-                        # at stop it's saved to the brain vault instead of pasted.
-                        # Ignored if nothing is recording (nothing to reclassify).
-                        if self.is_recording:
+                        # Copilot+N toggles a hands-free note. `note` can only fire
+                        # while Super+Shift (the Copilot key) is held, which also
+                        # fired `start` — so we're normally recording here.
+                        if not self.is_recording:
+                            pass  # defensive: nothing to convert
+                        elif not self._note_session:
+                            # First Copilot+N: convert this recording into a note
+                            # session that survives the Copilot release.
                             self._capture_mode = "note"
-                            logger.info("Capture mode → note (will save to brain)")
+                            self._note_session = True
+                            logger.info("Note session started (Copilot+N again to stop)")
                             self.waybar_state.recording()
+                            _notify("🎙️ Recording note", "Press Copilot+N again to stop and save.")
+                        else:
+                            # Second Copilot+N: end the session and save the note.
+                            logger.info("Note session ended by toggle; saving")
+                            self._note_session = False
+                            self._stop_recording()
                 except Exception:
                     # A failed recording must never tear down the IPC server,
                     # otherwise the global shortcut goes permanently dead until
