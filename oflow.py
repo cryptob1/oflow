@@ -56,6 +56,16 @@ try:
 except ImportError:
     _HAS_PSUTIL = False
 
+# Second-brain sink for "note" captures (alongside oflow.py). Optional: if it's
+# missing (e.g. a partial install), note mode degrades to a logged error rather
+# than crashing dictation.
+try:
+    import brain
+
+    _HAS_BRAIN = True
+except ImportError:
+    _HAS_BRAIN = False
+
 load_dotenv()
 
 _debug_mode = os.getenv("DEBUG_MODE", "false").lower() == "true"
@@ -1854,6 +1864,10 @@ class VoiceDictationServer:
         # Characters left on screen by the last dictation, so "scratch that" in a
         # following dictation can delete them.
         self._last_output_chars = 0
+        # Where the current recording is routed at stop: "dictation" pastes into
+        # the focused app (default); "note" saves to the second-brain vault. A
+        # `note` command mid-recording (Copilot+N) flips it; reset on every start.
+        self._capture_mode = "dictation"
 
         # Load settings
         settings = load_settings()
@@ -2321,6 +2335,9 @@ class VoiceDictationServer:
 
             self.audio_data = []
             self._last_stream_warn = 0.0
+            # Every recording starts as dictation; a `note` command during the
+            # hold (Copilot+N) reclassifies it before stop.
+            self._capture_mode = "dictation"
 
             try:
                 # Load settings up front so the overlay can be shown *before* any
@@ -2681,6 +2698,23 @@ class VoiceDictationServer:
             except Exception:
                 pass
 
+    def _save_note(self, text: str):
+        """Save a note-mode capture to the second-brain vault (Copilot+N)."""
+        if not _HAS_BRAIN:
+            logger.error("Note capture requested but brain module is unavailable")
+            self.waybar_state.error("Note unavailable")
+            self.audio_feedback.play_error()
+            return
+        try:
+            path = brain.add_note(text)
+            snippet = (text[:60] + "…") if len(text) > 60 else text
+            _notify("📝 Noted", snippet)
+            logger.info(f"Note saved → {path}")
+        except Exception:
+            logger.exception("Failed to save note to brain")
+            self.waybar_state.error("Note save failed")
+            self.audio_feedback.play_error()
+
     async def _process_transcription(self):
         """Process recorded audio: transcribe, clean up, and type result."""
         settings = load_settings()
@@ -2792,9 +2826,13 @@ class VoiceDictationServer:
             elif enable_cleanup and not cleanup_key:
                 logger.info("Cleanup skipped: no Groq/OpenAI key configured for the cleanup LLM")
 
-        # Output: run "<wake word> command" voice commands as real keystrokes
-        # (default), or paste-and-optionally-submit on the legacy path.
-        if enable_actions:
+        # Route by capture mode. A note goes to the second-brain vault instead of
+        # being pasted; dictation (default) is output into the focused app.
+        if self._capture_mode == "note":
+            self._save_note(cleaned_text)
+        elif enable_actions:
+            # Output: run "<wake word> command" voice commands as real keystrokes
+            # (default), or paste-and-optionally-submit on the legacy path.
             self._last_output_chars = output_with_actions(
                 cleaned_text, wake_word, self._last_output_chars
             )
@@ -2843,6 +2881,14 @@ class VoiceDictationServer:
                             self._stop_recording()
                         else:
                             self._start_recording()
+                    elif cmd == "note":
+                        # Reclassify the in-flight recording as a note (Copilot+N):
+                        # at stop it's saved to the brain vault instead of pasted.
+                        # Ignored if nothing is recording (nothing to reclassify).
+                        if self.is_recording:
+                            self._capture_mode = "note"
+                            logger.info("Capture mode → note (will save to brain)")
+                            self.waybar_state.recording()
                 except Exception:
                     # A failed recording must never tear down the IPC server,
                     # otherwise the global shortcut goes permanently dead until
@@ -2964,9 +3010,9 @@ def main() -> None:
     if len(sys.argv) > 1:
         cmd = sys.argv[1]
 
-        if cmd not in ("start", "stop", "toggle"):
+        if cmd not in ("start", "stop", "toggle", "note"):
             print(f"Unknown command: {cmd}", file=sys.stderr)
-            print("Usage: oflow [start|stop|toggle]", file=sys.stderr)
+            print("Usage: oflow [start|stop|toggle|note]", file=sys.stderr)
             sys.exit(1)
 
         try:
