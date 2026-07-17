@@ -89,26 +89,31 @@ def _commit(vault: Path, path: Path, message: str) -> None:
 
 
 def add_note(text: str, timestamp: datetime | None = None) -> Path:
-    """Append a timestamped note to today's Markdown file and commit it.
+    """Write a note to its own Markdown file and commit it.
 
-    Returns the file written. Raises only on filesystem errors (the caller treats
-    those as a failed capture); git problems are swallowed.
+    One file per note (not per day) so captures from different machines never
+    collide when the vault is synced (Syncthing/Obsidian) across laptops. Returns
+    the file written; raises only on filesystem errors (git problems are swallowed).
     """
     ts = timestamp or datetime.now()
     vault = _vault()
     notes_dir = vault / "notes"
     notes_dir.mkdir(parents=True, exist_ok=True)
-    day_file = notes_dir / f"{ts:%Y-%m-%d}.md"
 
-    new_file = not day_file.exists()
-    with open(day_file, "a") as f:
-        if new_file:
-            f.write(f"# Notes — {ts:%Y-%m-%d}\n")
-        f.write(f"\n## {ts:%H:%M}\n{text.strip()}\n")
+    # Unique filename to the second, with a suffix guard for same-second captures.
+    base = f"{ts:%Y-%m-%d-%H%M%S}"
+    note_file = notes_dir / f"{base}.md"
+    n = 2
+    while note_file.exists():
+        note_file = notes_dir / f"{base}-{n}.md"
+        n += 1
 
-    _commit(vault, day_file, f"note: {ts:%Y-%m-%d %H:%M}")
-    logger.info(f"Note saved to {day_file}")
-    return day_file
+    note_file.write_text(
+        f"---\ncreated: {ts.isoformat()}\ntype: note\nsource: oflow\n---\n\n{text.strip()}\n"
+    )
+    _commit(vault, note_file, f"note: {ts:%Y-%m-%d %H:%M}")
+    logger.info(f"Note saved to {note_file}")
+    return note_file
 
 
 def add_meeting(transcript: str, summary: str, timestamp: datetime | None = None) -> Path:
