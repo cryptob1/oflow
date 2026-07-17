@@ -166,6 +166,10 @@ MIC_WARMUP_SECONDS = float(os.getenv("OFLOW_MIC_WARMUP_MS", "250")) / 1000.0
 
 # API configuration
 API_TIMEOUT_SECONDS = 30.0  # Timeout for API requests
+# Max chunk-transcription requests in flight at once. Long meetings split into
+# dozens of chunks; providers cap concurrency (ElevenLabs Scribe = 20), so keep
+# under that to avoid 429s. Override via OFLOW_MAX_TRANSCRIBE_CONCURRENCY.
+MAX_TRANSCRIBE_CONCURRENCY = int(os.getenv("OFLOW_MAX_TRANSCRIBE_CONCURRENCY", "12"))
 # How long an idle keep-alive socket may be reused before it's recycled. Kept
 # below typical server/NAT idle timeouts so we don't try to send on a socket the
 # other end has already dropped (e.g. after laptop suspend/resume).
@@ -1286,7 +1290,8 @@ async def transcribe_audio_chunked(
     """Transcribe audio, splitting long recordings into chunks for reliability.
 
     Short audio (<25s) is sent directly. Longer audio is split at silence
-    boundaries and chunks are transcribed in parallel, then joined.
+    boundaries and chunks are transcribed in parallel (capped concurrency), then
+    joined.
     """
     chunks = AudioProcessor.split_into_chunks(audio)
 
@@ -1295,7 +1300,16 @@ async def transcribe_audio_chunked(
 
     logger.info(f"Split {len(audio) / SAMPLE_RATE:.1f}s audio into {len(chunks)} chunks")
 
-    tasks = [transcribe_audio(client, chunk, api_key, provider) for chunk in chunks]
+    # Cap concurrent requests. A long meeting can split into dozens of chunks;
+    # firing them all at once overruns provider limits (e.g. ElevenLabs Scribe
+    # allows 20 concurrent requests) and triggers 429s. Stay comfortably under.
+    sem = asyncio.Semaphore(MAX_TRANSCRIBE_CONCURRENCY)
+
+    async def _transcribe_one(chunk: np.ndarray) -> str:
+        async with sem:
+            return await transcribe_audio(client, chunk, api_key, provider)
+
+    tasks = [_transcribe_one(chunk) for chunk in chunks]
     results = await asyncio.gather(*tasks)
 
     # Join non-empty results with spaces
