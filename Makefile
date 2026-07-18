@@ -182,6 +182,9 @@ _ensure-sidecar-stub:
 	@echo '    "$$OFLOW_BIN" &' >> ~/.local/bin/oflow-toggle
 	@echo 'fi' >> ~/.local/bin/oflow-toggle
 	@chmod +x ~/.local/bin/oflow-toggle
+	@echo "Installing brain search launcher (oflow-brain)..."
+	@printf '#!/bin/bash\nexec "$$HOME/code/oflow/.venv/bin/python" "$$HOME/code/oflow/brain_search.py" "$$@"\n' > ~/.local/bin/oflow-brain
+	@chmod +x ~/.local/bin/oflow-brain
 	@echo "Creating app-menu launcher (oflow.desktop)..."
 	@mkdir -p ~/.local/share/applications
 	@printf '[Desktop Entry]\nType=Application\nName=oflow\nGenericName=Voice Typing & Second Brain\nComment=Voice dictation, notes (Copilot+N) and meetings (Copilot+M)\nExec=%s/.local/bin/oflow-toggle\nIcon=audio-input-microphone\nTerminal=false\nCategories=Utility;AudioVideo;Audio;\nKeywords=voice;dictation;transcription;notes;meetings;brain;\nStartupWMClass=oflow\n' "$$HOME" > ~/.local/share/applications/oflow.desktop

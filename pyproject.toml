@@ -29,6 +29,7 @@ dependencies = [
     "numpy>=1.24.0",
     "httpx>=0.27.0",
     "python-dotenv>=1.0.0",
+    "fastembed>=0.3.0",  # local embeddings for brain_search (ask-my-brain)
 ]
 
 [project.optional-dependencies]
