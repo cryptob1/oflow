@@ -2881,6 +2881,17 @@ class VoiceDictationServer:
             except Exception:
                 pass
 
+    def _run_brain(self, *args: str):
+        """Fire the brain CLI (oflow-brain) detached, best-effort — used for the
+        initiative auto-linker so it never blocks or crashes a capture."""
+        try:
+            subprocess.Popen(
+                [str(Path.home() / ".local" / "bin" / "oflow-brain"), *args],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True,
+            )
+        except Exception as e:
+            logger.debug(f"Could not start brain linker: {e}")
+
     def _save_note(self, text: str):
         """Save a note-mode capture to the second-brain vault (Copilot+N)."""
         if not _HAS_BRAIN:
@@ -2893,6 +2904,7 @@ class VoiceDictationServer:
             snippet = (text[:60] + "…") if len(text) > 60 else text
             _notify("📝 Noted", snippet)
             logger.info(f"Note saved → {path}")
+            self._run_brain("--link", str(path))  # auto-map to initiatives
         except Exception:
             logger.exception("Failed to save note to brain")
             self.waybar_state.error("Note save failed")
@@ -3039,6 +3051,7 @@ class VoiceDictationServer:
             path = brain.add_meeting(transcript, summary)
             _notify("📝 Meeting saved", f"{duration / 60:.0f} min → {path.name}")
             logger.info(f"Meeting saved → {path}")
+            self._run_brain("--link", str(path))  # auto-map to initiatives
         except Exception:
             logger.exception("Failed to save meeting to brain")
             self.waybar_state.error("Meeting save failed")
@@ -3060,6 +3073,7 @@ class VoiceDictationServer:
             detail = name + (f" · {len(goals)} goal{'s' if len(goals) != 1 else ''}" if goals else "")
             _notify("🎯 Initiative created", detail)
             logger.info(f"Initiative created → {path}")
+            self._run_brain("--link-all")  # retro-link existing notes/meetings to it
         except Exception:
             logger.exception("Failed to save initiative; saving as a note instead")
             self._save_note(text)
