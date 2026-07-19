@@ -21,6 +21,9 @@ Built for **Wayland**, **Hyprland**, and **Omarchy**. Open source, transcripts s
 - **Instant transcription** — Groq Whisper (`whisper-large-v3-turbo`), ~0.6s latency
 - **Push-to-talk** — Hold the **Copilot key** to record, release to stop & paste
 - **One-shot paste** — Pastes the whole result at once (via ydotool), not char-by-char
+- **📝 Note capture** — **Copilot+N** saves a hands-free note to your second brain instead of pasting ([see below](#-second-brain-notes-meetings--ask))
+- **🎙️ Meeting recording** — **Copilot+M** records a call (system audio + your mic), then transcribes & summarizes it into the brain
+- **🧠 Ask your brain** — natural-language, cited search over every note & meeting — runs locally (on-device embeddings), no extra API key
 - **On-screen overlay** — Live recording level meter at the bottom of the screen
 - **Pauses your media** — Auto-pauses playing music/video while you dictate, resumes after
 - **Voice commands** — Say "jarvis scratch that", "jarvis select all", "jarvis enter" and oflow presses the real keys ([see below](#-voice-commands))
@@ -28,7 +31,7 @@ Built for **Wayland**, **Hyprland**, and **Omarchy**. Open source, transcripts s
 - **Smart cleanup** — Auto-fixes grammar, removes filler words, formats text
 - **Waybar integration** — Click status icon to open settings, visual feedback while recording
 - **Spoken punctuation** — Say "period" or "new line" to insert symbols
-- **Privacy-conscious** — Transcripts stored locally, no telemetry; audio is sent only to Groq for the ~0.5s transcription and never stored
+- **Privacy-conscious** — Transcripts, notes & meetings stored locally in a plain-Markdown vault; no telemetry; audio is sent only to your transcription provider and never stored
 - **Open source** — Built with Python + Tauri
 
 ## How oflow compares to local voice dictation (Voxtype, nerd‑dictation)
@@ -124,10 +127,38 @@ Dictation is more than typing — say **"jarvis"** followed by a command and ofl
 
 The wake word is configurable in **Settings → Spoken Commands** (default `jarvis` — a name Whisper transcribes reliably; pick any word it hears cleanly), and the recording overlay rotates a hint each time so the commands are easy to discover.
 
+## 🧠 Second brain (notes, meetings & Ask)
+
+Beyond dictation, oflow can capture straight into a personal knowledge base — a plain-Markdown **vault** (default `~/brain`) that's [Obsidian](https://obsidian.md)-compatible and git-backed. Two extra hotkeys ride on the Copilot key (which holds Super+Shift, so these are `Super+Shift+N` / `Super+Shift+M`):
+
+| Gesture | Mode | What happens |
+|---|---|---|
+| Hold **Copilot** | **Dictate** | transcribe → paste into the focused app *(unchanged)* |
+| **Copilot + N** (toggle) | **Note** | records hands-free; on the second press, saves the cleaned text to `~/brain/notes/` |
+| **Copilot + M** (toggle) | **Meeting** | records **system audio + your mic** mixed; on stop, transcribes (auto-chunked), summarizes (title / key points / decisions / action items), and files it to `~/brain/meetings/` |
+
+Each capture is one Markdown file and is git-committed automatically. Notifications tell you when recording starts, stops, and saves.
+
+### Ask your brain
+
+The desktop app's **Ask** tab (and the `oflow-brain` CLI) answer natural-language questions over everything you've captured:
+
+```bash
+oflow-brain "what did we decide about onboarding?"
+```
+
+It's a **local RAG**: your notes & meetings are embedded on-device with [`fastembed`](https://github.com/qdrant/fastembed) (ONNX, no API key), the most relevant chunks are retrieved, and Groq synthesizes a **cited** answer. The index lives in `~/brain/.index` (rebuilds itself when the vault changes) — your Markdown stays the source of truth.
+
+### Sync across devices
+
+Because the vault is just a git repo of Markdown, sync it however you like — a private git remote (turn on **auto-push** in Settings), [Syncthing](https://syncthing.net) (great for background, keyless, cross-device sync incl. Android), or Obsidian Sync. Open the folder in **Obsidian mobile** to read and search your brain on your phone. Notes are one file each (never conflict on sync); meetings likewise.
+
 ## Tech Stack
 
-- **Transcription**: [Groq Whisper](https://groq.com) `large-v3-turbo` — ~300× realtime, ~$0.04/hr
-- **Text cleanup**: Llama 3.1 8B via Groq
+- **Transcription**: [Groq Whisper](https://groq.com) `large-v3-turbo` (or ElevenLabs Scribe / OpenAI / Deepgram) — ~300× realtime, ~$0.04/hr
+- **Text cleanup & summaries**: Llama (3.1 8B cleanup / 3.3 70B meeting summaries) via Groq
+- **Meeting audio**: PipeWire null-sink mixing system output + mic, captured with `pw-record`
+- **Second brain**: plain-Markdown vault (git-backed) + local [`fastembed`](https://github.com/qdrant/fastembed) embeddings for on-device semantic search
 - **Backend**: Python with asyncio + httpx
 - **Desktop app**: [Tauri](https://tauri.app) + React
 
@@ -240,16 +271,31 @@ Settings are stored in `~/.oflow/settings.json`:
 
 ```json
 {
-  "provider": "groq",                 // "groq" (recommended) or "openai"
-  "groqApiKey": "gsk_...",            // Your Groq API key
+  "provider": "groq",                 // "groq", "elevenlabs", "openai", or "deepgram"
+  "groqApiKey": "gsk_...",            // Your Groq API key (also used for cleanup/summaries/Ask)
   "openaiApiKey": "sk-...",           // Your OpenAI API key (if using openai provider)
   "enableCleanup": true,              // LLM grammar/punctuation cleanup
   "audioFeedbackTheme": "default",    // "default", "subtle", "mechanical", "silent"
   "audioFeedbackVolume": 0.3,         // 0.0 to 1.0
   "iconTheme": "nerd-font",           // "nerd-font", "emoji", "minimal", "text"
   "enableSpokenPunctuation": false,   // Say "period" → "."
-  "wordReplacements": {}              // Custom word corrections {"oflow": "Oflow"}
+  "wordReplacements": {},             // Custom word corrections {"oflow": "Oflow"}
+
+  // Second brain (Settings → Second Brain)
+  "brainVaultPath": "~/brain",        // Where notes & meetings are saved (Obsidian-compatible)
+  "brainGit": true,                   // Git-commit each capture (if the vault is a repo)
+  "brainGitPush": false               // Also push after each commit (for cross-device sync)
 }
+```
+
+A few behaviors are tuned with environment variables (e.g. in `~/.oflow/.env`):
+
+```bash
+OFLOW_BRAIN_DIR=~/brain                 # overrides brainVaultPath
+OFLOW_BRAIN_GIT_PUSH=true               # overrides brainGitPush
+OFLOW_MAX_TRANSCRIBE_CONCURRENCY=12     # cap parallel chunk requests (long meetings)
+OFLOW_MIC_WARMUP_MS=250                 # on-demand mic warm-up before capture
+OFLOW_PERSISTENT_MIC=false              # keep the mic stream warm across dictations
 ```
 
 ## Hotkey Configuration
@@ -266,7 +312,14 @@ The hotkey is configured automatically during `make install` in `~/.config/hypr/
 unbind = SUPER SHIFT, code:201
 bindd = SUPER SHIFT, code:201, Oflow dictation (hold to talk), exec, ~/.local/bin/oflow-ctl start
 bindr = SUPER SHIFT, code:201, exec, ~/.local/bin/oflow-ctl stop
+# Second-brain capture (Copilot holds Super+Shift, so these are Copilot+N / Copilot+M):
+unbind = SUPER SHIFT, N
+bind = SUPER SHIFT, N, exec, ~/.local/bin/oflow-ctl note      # toggle a hands-free note
+unbind = SUPER SHIFT, M
+bind = SUPER SHIFT, M, exec, ~/.local/bin/oflow-ctl meeting   # toggle a meeting recording
 ```
+
+> oflow regenerates this block on start, so the note/meeting binds are added automatically for the Copilot hotkey — no manual editing needed.
 
 On a keyboard without a Copilot key, override the hotkey at install time:
 
