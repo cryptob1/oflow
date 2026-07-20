@@ -146,7 +146,7 @@ export interface VaultEntry {
  * Reads the vault's notes/ or meetings/ folder (via the Rust backend, which
  * resolves the configured vault path). Newest first; [] if none yet.
  */
-export async function readVault(kind: 'notes' | 'meetings' | 'initiatives'): Promise<VaultEntry[]> {
+export async function readVault(kind: 'notes' | 'meetings' | 'initiatives' | 'dreams'): Promise<VaultEntry[]> {
     try {
         return await invoke<VaultEntry[]>('read_vault', { kind });
     } catch (error) {
@@ -193,6 +193,19 @@ export interface InitiativeStatus {
 
 export async function initiativeStatus(name: string): Promise<InitiativeStatus> {
     return await invoke<InitiativeStatus>('initiative_status', { name });
+}
+
+/** Result of a consolidation "dream". */
+export interface DreamResult {
+    relinked: number;
+    initiatives: number;
+    stale: string[];
+    suggestions: { name: string; why: string }[];
+    journal: string;
+}
+
+export async function runDream(): Promise<DreamResult> {
+    return await invoke<DreamResult>('run_dream');
 }
 
 /**

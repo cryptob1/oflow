@@ -140,7 +140,7 @@ fn vault_dir() -> std::path::PathBuf {
 /// newest first. Returns an empty list if the folder doesn't exist yet.
 #[tauri::command]
 fn read_vault(kind: String) -> Result<Vec<VaultEntry>, String> {
-    if !matches!(kind.as_str(), "notes" | "meetings" | "initiatives") {
+    if !matches!(kind.as_str(), "notes" | "meetings" | "initiatives" | "dreams") {
         return Err("invalid vault kind".to_string());
     }
     let dir = vault_dir().join(&kind);
@@ -268,6 +268,37 @@ async fn initiative_status(name: String) -> Result<InitiativeStatus, String> {
         return Err("empty initiative".to_string());
     }
     let json = run_brain_json(&["--initiative", &name])?;
+    serde_json::from_str(&json).map_err(|e| format!("parse error: {}", e))
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct DreamSuggestion {
+    #[serde(default)]
+    name: String,
+    #[serde(default)]
+    why: String,
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct DreamResult {
+    #[serde(default)]
+    relinked: u32,
+    #[serde(default)]
+    initiatives: u32,
+    #[serde(default)]
+    stale: Vec<String>,
+    #[serde(default)]
+    suggestions: Vec<DreamSuggestion>,
+    #[serde(default)]
+    journal: String,
+}
+
+/// Run a consolidation "dream" now (re-link, refresh initiative statuses,
+/// suggest emergent initiatives, write a journal). Can take a while — the UI
+/// shows a spinner.
+#[tauri::command]
+async fn run_dream() -> Result<DreamResult, String> {
+    let json = run_brain_json(&["--dream"])?;
     serde_json::from_str(&json).map_err(|e| format!("parse error: {}", e))
 }
 
@@ -748,7 +779,8 @@ pub fn run() {
             read_vault,
             ask_brain,
             list_initiatives,
-            initiative_status
+            initiative_status,
+            run_dream
         ])
         .run(tauri::generate_context!())
         .map_err(|e| {
