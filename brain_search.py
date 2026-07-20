@@ -17,6 +17,7 @@ import logging
 import os
 import re
 import sys
+from datetime import datetime
 from pathlib import Path
 
 import numpy as np
@@ -194,7 +195,9 @@ def answer(query: str, k: int = 6) -> tuple[str, list[str]]:
 # --------------------------------------------------------------------------- #
 # Auto-mapping: link notes/meetings to related initiatives (semantic)
 # --------------------------------------------------------------------------- #
-LINK_THRESHOLD = float(os.environ.get("OFLOW_LINK_THRESHOLD", "0.5"))
+# bge-small has a high similarity baseline (unrelated pairs ~0.45-0.57, related
+# ~0.6-0.75), so 0.6 is the clean cut between "about this goal" and coincidental.
+LINK_THRESHOLD = float(os.environ.get("OFLOW_LINK_THRESHOLD", "0.6"))
 LINK_MAX = int(os.environ.get("OFLOW_LINK_MAX", "2"))
 
 _FM_RE = re.compile(r"^---\n(.*?)\n---\n", re.DOTALL)
@@ -416,6 +419,114 @@ def initiative_status(name_or_slug: str) -> dict:
         return {"title": title, "linked": len(items), "status": f"Status error: {e}"}
 
 
+# --------------------------------------------------------------------------- #
+# Dreams: nightly consolidation of captures into initiatives
+# --------------------------------------------------------------------------- #
+_STATUS_START, _STATUS_END = "<!-- oflow:status -->", "<!-- /oflow:status -->"
+
+
+def _write_status_snapshot(f: Path, status_md: str, ts: datetime) -> None:
+    """Insert/replace a dated status snapshot inside an initiative file. The
+    HTML-comment markers make it idempotent and invisible in Obsidian's render."""
+    text = f.read_text()
+    block = (f"{_STATUS_START}\n## Status — updated {ts:%Y-%m-%d}\n\n"
+             f"{status_md.strip()}\n{_STATUS_END}\n")
+    if _STATUS_START in text:
+        text = re.sub(re.escape(_STATUS_START) + r".*?" + re.escape(_STATUS_END) + r"\n?",
+                      block, text, flags=re.DOTALL)
+    elif "## Log" in text:
+        text = text.replace("## Log", block + "\n## Log", 1)
+    else:
+        text = text.rstrip() + "\n\n" + block
+    f.write_text(text)
+
+
+def _suggest_initiatives(max_captures: int = 30) -> list[dict]:
+    """Look at captures tied to NO initiative; if themes recur, suggest new ones."""
+    vault = brain._vault()
+    unlinked = []
+    for kind in ("notes", "meetings"):
+        d = vault / kind
+        if not d.exists():
+            continue
+        for f in sorted(d.glob("*.md")):
+            fm, body = _split(f.read_text())
+            if not _fm_list(fm, "links"):
+                if _fm_field(fm, "type") == "meeting":
+                    body = body.split("## Transcript", 1)[0]
+                unlinked.append(body.strip()[:600])
+    key = _groq_key()
+    if len(unlinked) < 3 or not key:
+        return []
+    import httpx
+    prompt = (
+        "These are the user's recent notes and meetings that aren't tied to any goal or "
+        "initiative. Identify up to 3 recurring themes that could each become an initiative "
+        "worth tracking — only suggest a theme that shows up across MULTIPLE captures. Respond "
+        'ONLY with JSON: {"suggestions": [{"name": "...", "why": "one line"}]}. Empty list if '
+        "nothing recurs."
+    )
+    try:
+        resp = httpx.post(
+            GROQ_CHAT_URL, headers={"Authorization": f"Bearer {key}"},
+            json={"model": ANSWER_MODEL,
+                  "messages": [{"role": "system", "content": prompt},
+                               {"role": "user", "content": "\n\n---\n\n".join(unlinked[:max_captures])}],
+                  "temperature": 0.4, "max_tokens": 400,
+                  "response_format": {"type": "json_object"}},
+            timeout=30,
+        )
+        if resp.status_code == 200:
+            return json.loads(resp.json()["choices"][0]["message"]["content"]).get("suggestions", [])
+    except Exception as e:
+        logger.error(f"Dream suggest error: {e}")
+    return []
+
+
+def _write_dream_journal(linked: int, updated: list, stale: list,
+                         suggestions: list, ts: datetime) -> Path:
+    lines = [f"Consolidated your brain into your initiatives.\n",
+             f"- Re-linked **{linked}** capture(s) to initiatives."]
+    if updated:
+        lines.append("\n## Initiatives reviewed")
+        lines += [f"- **{u['title']}** — {u['linked']} linked capture(s)" for u in updated]
+    if stale:
+        lines.append("\n## Going quiet")
+        lines += [f"- {s} — no linked activity yet" for s in stale]
+    if suggestions:
+        lines.append("\n## Maybe start an initiative?")
+        lines += [f"- **{s.get('name', '')}** — {s.get('why', '')}" for s in suggestions]
+    return brain.write_item(
+        "dream", "dreams", f"{ts:%Y-%m-%d-%H%M}",
+        title=f"Dream — {ts:%Y-%m-%d %H:%M}", body="\n".join(lines) + "\n",
+        source="oflow-dream", timestamp=ts,
+    )
+
+
+def dream() -> dict:
+    """The consolidation pass: re-link captures, refresh each initiative's status
+    snapshot, flag quiet initiatives, suggest emergent ones, and journal it."""
+    ts = datetime.now()
+    vault = brain._vault()
+    linked = link_all()
+    inits = list_initiatives()
+    updated = []
+    for it in inits:
+        st = initiative_status(it["slug"])
+        f = vault / "initiatives" / f"{it['slug']}.md"
+        if f.exists():
+            _write_status_snapshot(f, st["status"], ts)
+            brain._commit(vault, f, f"dream: refresh status — {it['slug']}")
+        updated.append({"title": it["title"], "linked": st["linked"]})
+    stale = [it["title"] for it in inits if it["linked"] == 0]
+    suggestions = _suggest_initiatives()
+    journal = _write_dream_journal(linked, updated, stale, suggestions, ts)
+    logger.info(f"Dream: {len(inits)} initiatives refreshed, {linked} re-linked, "
+                f"{len(suggestions)} suggestion(s)")
+    return {"relinked": linked, "initiatives": len(inits), "stale": stale,
+            "suggestions": suggestions, "journal": journal.name}
+
+
 def main() -> None:
     args = sys.argv[1:]
 
@@ -449,6 +560,12 @@ def main() -> None:
     if args[0] == "--initiative":
         data = initiative_status(" ".join(args[1:]))
         print(json.dumps(data) if as_json else f"# {data['title']}\n\n{data['status']}")
+        return
+    if args[0] == "--dream":
+        r = dream()
+        print(json.dumps(r) if as_json else
+              f"Dreamt: {r['initiatives']} initiative(s) refreshed, {r['relinked']} re-linked, "
+              f"{len(r['suggestions'])} suggestion(s). Journal: dreams/{r['journal']}")
         return
 
     query = " ".join(args)
