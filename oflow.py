@@ -1367,6 +1367,17 @@ async def cleanup_text(client: httpx.AsyncClient, text: str, api_key: str, provi
             if len(cleaned) > len(text) * 1.5:
                 logger.debug("Cleanup added too much content, using original")
                 return text
+            # Guard against the model ANSWERING or rephrasing instead of
+            # transcribing (e.g. a dictated question comes back as an answer). A
+            # faithful cleanup only tweaks punctuation/fillers, so it shouldn't
+            # introduce many words absent from the raw. If it does, keep the raw.
+            raw_words = set(re.findall(r"\w+", text.lower()))
+            clean_words = re.findall(r"\w+", cleaned.lower())
+            if clean_words:
+                new_ratio = sum(w not in raw_words for w in clean_words) / len(clean_words)
+                if new_ratio > 0.3:
+                    logger.info(f"Cleanup diverged from transcript ({new_ratio:.0%} new words); using raw")
+                    return text
             return cleaned
     except Exception as e:
         logger.error(f"Cleanup error: {e}")

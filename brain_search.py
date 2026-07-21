@@ -195,9 +195,11 @@ def answer(query: str, k: int = 6) -> tuple[str, list[str]]:
 # --------------------------------------------------------------------------- #
 # Auto-mapping: link notes/meetings to related initiatives (semantic)
 # --------------------------------------------------------------------------- #
-# bge-small has a high similarity baseline (unrelated pairs ~0.45-0.57, related
-# ~0.6-0.75), so 0.6 is the clean cut between "about this goal" and coincidental.
-LINK_THRESHOLD = float(os.environ.get("OFLOW_LINK_THRESHOLD", "0.6"))
+# Embedding similarity is only a loose RECALL net now — the LLM verifier (below)
+# is the precision filter. Keep it low so genuine matches with thin/short
+# initiative profiles (e.g. a goal with no goals list, or a name spelled slightly
+# differently) still become candidates; the verifier drops the false positives.
+LINK_THRESHOLD = float(os.environ.get("OFLOW_LINK_THRESHOLD", "0.45"))
 LINK_MAX = int(os.environ.get("OFLOW_LINK_MAX", "2"))
 
 _FM_RE = re.compile(r"^---\n(.*?)\n---\n", re.DOTALL)
