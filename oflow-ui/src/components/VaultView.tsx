@@ -4,7 +4,16 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Search, Loader2, AlertCircle, Copy, Check } from "lucide-react";
+import { Markdown } from "@/components/ui/markdown";
 import { readVault, type VaultEntry } from "@/lib/api";
+
+/** Split an item's YAML frontmatter from its body, pulling out the title. */
+function parseEntry(content: string): { title?: string; body: string } {
+    const m = content.match(/^---\n([\s\S]*?)\n---\n?/);
+    if (!m) return { body: content };
+    const title = m[1].match(/^title:\s*(.+)$/m)?.[1]?.trim();
+    return { title, body: content.slice(m[0].length).trim() };
+}
 
 /**
  * Lists Markdown entries from the second-brain vault (notes/ or meetings/).
@@ -102,29 +111,32 @@ export function VaultView({ kind, title, subtitle }: {
                             </div>
                         ) : (
                             <div className="space-y-4">
-                                {filtered.map((item, index) => (
-                                    <div key={item.name} className="flex flex-col gap-2 p-4 rounded-lg border bg-card group">
-                                        <div className="flex items-center justify-between">
-                                            <span className="text-sm font-medium">{item.name}</span>
-                                            <Button
-                                                variant="ghost"
-                                                size="sm"
-                                                className="h-8 w-8 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
-                                                onClick={() => copyToClipboard(item.content, index)}
-                                                title="Copy to clipboard"
-                                            >
-                                                {copiedIndex === index ? (
-                                                    <Check className="h-4 w-4 text-green-500" />
-                                                ) : (
-                                                    <Copy className="h-4 w-4" />
-                                                )}
-                                            </Button>
+                                {filtered.map((item, index) => {
+                                    const { title, body } = parseEntry(item.content);
+                                    return (
+                                        <div key={item.name} className="flex flex-col gap-2 p-4 rounded-lg border bg-card group">
+                                            <div className="flex items-start justify-between gap-2">
+                                                <span className="font-medium leading-snug">{title || item.name}</span>
+                                                <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    className="h-8 w-8 p-0 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                                                    onClick={() => copyToClipboard(body, index)}
+                                                    title="Copy to clipboard"
+                                                >
+                                                    {copiedIndex === index ? (
+                                                        <Check className="h-4 w-4 text-green-500" />
+                                                    ) : (
+                                                        <Copy className="h-4 w-4" />
+                                                    )}
+                                                </Button>
+                                            </div>
+                                            <div className="max-h-96 overflow-auto">
+                                                <Markdown>{body}</Markdown>
+                                            </div>
                                         </div>
-                                        <pre className="text-sm whitespace-pre-wrap font-sans text-muted-foreground max-h-96 overflow-auto">
-                                            {item.content}
-                                        </pre>
-                                    </div>
-                                ))}
+                                    );
+                                })}
                             </div>
                         )}
                     </ScrollArea>

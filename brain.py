@@ -171,19 +171,66 @@ def write_item(
     return path
 
 
+def _title_from_text(text: str, max_words: int = 8, max_chars: int = 60) -> str:
+    """A short human title from a capture's first sentence — so notes read as
+    titles in Obsidian instead of timestamps. The timestamp lives in `created`."""
+    first = re.split(r"[.!?\n]", text.strip(), maxsplit=1)[0].strip(" ,.-—")
+    title = " ".join(first.split()[:max_words])
+    if len(title) > max_chars:
+        title = title[:max_chars].rsplit(" ", 1)[0]
+    return title or "note"
+
+
+def _strip_frontmatter(text: str) -> str:
+    if text.startswith("---\n"):
+        try:
+            return text[text.index("\n---\n", 4) + 5:]
+        except ValueError:
+            pass
+    return text
+
+
 def add_note(text: str, timestamp: datetime | None = None) -> Path:
-    """Save a dictated note. One file per note (never per-day) so cross-machine
-    syncs don't collide."""
+    """Save a dictated note under a human title derived from its content (one file
+    per note, so cross-machine syncs never collide)."""
     ts = timestamp or datetime.now()
+    title = _title_from_text(text)
     return write_item(
-        "note", "notes", f"{ts:%Y-%m-%d-%H%M%S}",
+        "note", "notes", _slugify(title), title=title,
         body=text.strip() + "\n", source="oflow-note", timestamp=ts,
     )
 
 
+def retitle_items(kinds: tuple[str, ...] = ("notes", "reminders")) -> int:
+    """One-off migration: give existing timestamp-named items a human title +
+    filename derived from their content, preserving all frontmatter (incl. links)."""
+    vault, n = _vault(), 0
+    for kind in kinds:
+        d = vault / kind
+        if not d.exists():
+            continue
+        for f in list(d.glob("*.md")):
+            text = f.read_text()
+            if re.search(r"^title:", text, re.MULTILINE):
+                continue  # already has a title
+            title = _title_from_text(_strip_frontmatter(text).strip())
+            new_text = re.sub(r"\n---\n", f"\ntitle: {title}\n---\n", text, count=1)
+            newpath = d / f"{_slugify(title)}.md"
+            i = 2
+            while newpath.exists() and newpath != f:
+                newpath = d / f"{_slugify(title)}-{i}.md"
+                i += 1
+            newpath.write_text(new_text)
+            if newpath != f:
+                f.unlink()
+            n += 1
+    return n
+
+
 def _slugify(name: str) -> str:
-    s = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
-    return s or "initiative"
+    s = name.lower().replace("'", "").replace("’", "")  # kyra's -> kyras
+    s = re.sub(r"[^a-z0-9]+", "-", s).strip("-")
+    return s or "item"
 
 
 def add_initiative(name: str, goals: list[str], note: str = "",
@@ -215,9 +262,8 @@ def add_reminder(task: str, due: str = "", note: str = "",
     if note.strip():
         body += f"\n{note.strip()}\n"
     return write_item(
-        "reminder", "reminders", f"{ts:%Y-%m-%d-%H%M%S}",
-        title=task, body=body, source="oflow-note", timestamp=ts,
-        extra={"due": due, "status": "pending"},
+        "reminder", "reminders", _slugify(task), title=task, body=body,
+        source="oflow-note", timestamp=ts, extra={"due": due, "status": "pending"},
     )
 
 
