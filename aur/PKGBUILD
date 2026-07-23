@@ -5,7 +5,7 @@ pkgver=0.2.0
 pkgrel=1
 pkgdesc="Fast, accurate voice-to-text dictation for Linux (Wayland/Hyprland), powered by Groq Whisper. Hold F8, speak, paste into any app."
 arch=('x86_64')
-url="https://github.com/cryptob1/oflow"
+url="https://github.com/cryptob1/cortex"
 license=('MIT')
 # Runtime: ydotool (paste) + ydotoold, playerctl (media pause),
 # gtk4-layer-shell/python-gobject/python-cairo (recording overlay),

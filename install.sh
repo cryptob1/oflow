@@ -2,13 +2,13 @@
 #
 # cortex installer — fast, accurate voice-to-text for Linux (Wayland/Hyprland).
 #
-#   curl -fsSL https://raw.githubusercontent.com/cryptob1/oflow/master/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/cryptob1/cortex/master/install.sh | bash
 #
 # Installs dependencies, builds cortex, sets up the Copilot-key hotkey, the recording
 # overlay, the ydotool paste daemon, and autostart. Arch / Omarchy.
 set -euo pipefail
 
-REPO="https://github.com/cryptob1/oflow.git"
+REPO="https://github.com/cryptob1/cortex.git"
 DIR="${CORTEX_DIR:-$HOME/code/cortex}"
 
 say() { printf '\n\033[1;36m==>\033[0m %s\n' "$1"; }

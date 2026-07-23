@@ -76,7 +76,7 @@ jobs:
             recording overlay, the paste daemon, and autostart:
 
             ```bash
-            curl -fsSL https://raw.githubusercontent.com/cryptob1/oflow/master/install.sh | bash
+            curl -fsSL https://raw.githubusercontent.com/cryptob1/cortex/master/install.sh | bash
             ```
 
             Or grab the prebuilt **AppImage** below (still needs the runtime deps —
@@ -91,6 +91,6 @@ jobs:
             2. Click the `󰍬` mic icon → Settings → paste your key
             3. **Hold F8** to record, release to stop & paste (end with "press enter" to submit)
 
-            See the [README](https://github.com/cryptob1/oflow#readme) for full docs.
+            See the [README](https://github.com/cryptob1/cortex#readme) for full docs.
           releaseDraft: false
           prerelease: false

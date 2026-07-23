@@ -54,7 +54,7 @@ Most open‑source Linux dictation tools (Voxtype, nerd‑dictation, numen) run 
 ## Install — one command (Arch / Omarchy)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/cryptob1/oflow/master/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/cryptob1/cortex/master/install.sh | bash
 ```
 
 Installs everything — dependencies, the app, the **Copilot-key** hotkey, the recording overlay, the paste daemon, and autostart. Then paste a free [Groq API key](https://console.groq.com/keys) and hold the **Copilot key** to talk.
@@ -64,9 +64,9 @@ Installs everything — dependencies, the app, the **Copilot-key** hotkey, the r
 Open your terminal AI agent (Claude Code, Cursor, Aider, …) and paste this prompt **verbatim**:
 
 ```text
-Install cortex (voice dictation for Linux) from https://github.com/cryptob1/oflow on
+Install cortex (voice dictation for Linux) from https://github.com/cryptob1/cortex on
 this Arch/Omarchy machine:
-1. Run: curl -fsSL https://raw.githubusercontent.com/cryptob1/oflow/master/install.sh | bash
+1. Run: curl -fsSL https://raw.githubusercontent.com/cryptob1/cortex/master/install.sh | bash
 2. Make sure the ydotoold user service is enabled (systemctl --user enable --now ydotool.service).
 3. Then ask me for my Groq API key (https://console.groq.com/keys), write it to
    ~/.cortex/settings.json as "groqApiKey", and restart cortex.
@@ -88,7 +88,7 @@ sudo usermod -aG input "$USER"
 systemctl --user enable --now ydotool.service
 
 # Build & install
-git clone https://github.com/cryptob1/oflow.git ~/code/cortex
+git clone https://github.com/cryptob1/cortex.git ~/code/cortex
 cd ~/code/cortex && make install
 ```
 </details>
@@ -181,7 +181,7 @@ cortex is **sync-agnostic**: it reads and writes a plain-Markdown folder, and ev
 **New machine — one command** (does the cortex side; the vault syncs via your chosen tool):
 
 ```bash
-git clone https://github.com/cryptob1/oflow.git ~/code/cortex
+git clone https://github.com/cryptob1/cortex.git ~/code/cortex
 bash ~/code/cortex/scripts/setup-machine.sh
 ```
 
@@ -207,7 +207,7 @@ Two devices point cortex at their *own* local copy of the same synced vault — 
 If you're an AI agent installing cortex on an Arch/Omarchy machine, just run the installer:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/cryptob1/oflow/master/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/cryptob1/cortex/master/install.sh | bash
 ```
 
 It installs all dependencies, builds the app, and sets up the Copilot-key hotkey, the overlay, the `ydotoold` paste daemon, and autostart. Afterward, tell the user to paste a free Groq API key (https://console.groq.com/keys) in **Settings** (tray/Waybar mic icon) and **hold the Copilot key** to dictate. Push‑to‑talk: hold the Copilot key to record, release to stop, transcribe, and paste. End a sentence with "press enter" to also submit.
@@ -230,7 +230,7 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 ### Build & Run
 
 ```bash
-git clone https://github.com/cryptob1/oflow.git
+git clone https://github.com/cryptob1/cortex.git
 cd cortex
 make install  # Full install: build app, setup hotkey, Waybar & autostart
 ```

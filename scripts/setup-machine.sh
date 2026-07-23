@@ -14,7 +14,7 @@ echo "== cortex: new-machine setup =="
 # 1. Repo
 if [ ! -d "$REPO/.git" ]; then
   echo "Cloning cortex -> $REPO"
-  git clone https://github.com/cryptob1/oflow.git "$REPO"
+  git clone https://github.com/cryptob1/cortex.git "$REPO"
 fi
 cd "$REPO"
 
