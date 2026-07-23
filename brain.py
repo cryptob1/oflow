@@ -46,6 +46,17 @@ def _vault() -> Path:
     return Path(path).expanduser()
 
 
+def _read_root() -> Path:
+    """Where to READ/search from — can be a whole Obsidian vault. oflow WRITES
+    captures under _vault() (e.g. <vault>/oflow), but Ask, initiative status, and
+    dreams can search a broader root (the parent vault) so your existing notes are
+    included. Defaults to the write vault. Read-only: existing notes are never
+    modified. Set via OFLOW_BRAIN_READ_DIR or settings `brainReadRoot`."""
+    env = os.environ.get("OFLOW_BRAIN_READ_DIR")
+    root = env or _settings().get("brainReadRoot")
+    return Path(root).expanduser() if root else _vault()
+
+
 def _git_enabled() -> bool:
     """Auto-commit each capture when the vault is a git repo. Push is opt-in."""
     env = os.environ.get("OFLOW_BRAIN_GIT")

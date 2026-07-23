@@ -83,21 +83,26 @@ def _chunk(text: str, size: int = 900, overlap: int = 150) -> list[str]:
 
 def build_index() -> int:
     """(Re)build the vault index. Returns the number of chunks indexed."""
-    vault = brain._vault()
+    root = brain._read_root()
     docs: list[dict] = []
-    for kind in ("notes", "meetings", "initiatives"):
-        d = vault / kind
-        if not d.exists():
+    for f in sorted(root.rglob("*.md")):
+        rel = f.relative_to(root)
+        if any(p.startswith(".") for p in rel.parts):  # skip .obsidian/.trash/.git/.index
             continue
-        for f in sorted(d.glob("*.md")):
-            for ch in _chunk(f.read_text()):
-                docs.append({"source": f"{kind}/{f.name}", "type": kind[:-1], "text": ch})
+        try:
+            text = f.read_text()
+        except Exception:
+            continue
+        fm, body = _split(text)
+        typ = _fm_field(fm, "type") or "note"
+        for ch in _chunk(body):
+            docs.append({"source": str(rel), "type": typ, "text": ch})
     if not docs:
         return 0
     vectors = _embed([d["text"] for d in docs])
     np.save(_index_dir() / "vectors.npy", vectors)
     (_index_dir() / "docs.json").write_text(json.dumps(docs))
-    logger.info(f"Indexed {len(docs)} chunks from {vault}")
+    logger.info(f"Indexed {len(docs)} chunks from {root}")
     return len(docs)
 
 
@@ -116,10 +121,12 @@ def _index_stale() -> bool:
     if not docs_file.exists():
         return True
     idx_mtime = docs_file.stat().st_mtime
-    vault = brain._vault()
-    for kind in ("notes", "meetings"):
-        d = vault / kind
-        if d.exists() and any(f.stat().st_mtime > idx_mtime for f in d.glob("*.md")):
+    root = brain._read_root()
+    for f in root.rglob("*.md"):
+        rel = f.relative_to(root)
+        if any(p.startswith(".") for p in rel.parts):
+            continue
+        if f.stat().st_mtime > idx_mtime:
             return True
     return False
 
@@ -233,12 +240,13 @@ def _initiatives() -> list[dict]:
         return []
     out = []
     for f in sorted(d.glob("*.md")):
-        fm, body = _split(f.read_text())
+        fm, _ = _split(f.read_text())
         title = _fm_field(fm, "title") or f.stem
-        # Profile = title + goals only; the Log grows over time and would drift the match.
-        goals = "\n".join(re.findall(r"^\s*-\s*(.+)$", body.split("## Log", 1)[0], re.MULTILINE))
+        # Profile = title + the stated goals (from frontmatter) only. NOT the Log or
+        # the auto-generated ## Status snapshot, which would drift/pollute the match.
+        goals = "\n".join(_fm_list(fm, "goals"))
         out.append({"file": f, "id": _fm_field(fm, "id") or f.stem,
-                    "title": title, "text": f"{title}\n{goals}"})
+                    "title": title, "text": f"{title}\n{goals}".strip()})
     return out
 
 
@@ -414,17 +422,30 @@ def initiative_status(name_or_slug: str) -> dict:
     f = find_initiative(name_or_slug)
     if not f:
         return {"title": name_or_slug, "status": f"No initiative matching '{name_or_slug}'.", "linked": 0}
-    fm, body = _split(f.read_text())
+    fm, _body = _split(f.read_text())
     title = _fm_field(fm, "title") or f.stem
     items = _linked_items(_fm_field(fm, "id"))
-    goals_block = body.split("## Log", 1)[0].strip()
+    goals = "\n".join(_fm_list(fm, "goals"))
+
+    # Augment the explicitly-linked oflow captures with related notes from the
+    # WHOLE vault (your existing notes too), retrieved semantically and verified so
+    # only genuinely-relevant ones are included. Read-only — existing notes untouched.
+    # Query on title + goals only (not the Log/Status, which would drift the match).
+    profile = f"{title}\n{goals}".strip()
+    have = {it["source"] for it in items}
+    for doc, _score in search(profile, k=6):
+        if doc["source"] in have or doc["source"].startswith("oflow/initiatives/"):
+            continue
+        if _verify_link(doc["text"], {"text": profile}):
+            items.append({"source": doc["source"], "created": "", "text": doc["text"]})
+            have.add(doc["source"])
 
     key = _groq_key()
     if not key:
         return {"title": title, "linked": len(items),
-                "status": f"{len(items)} linked capture(s). Set a Groq key for a synthesized status."}
+                "status": f"{len(items)} related capture(s). Set a Groq key for a synthesized status."}
     context = "\n\n".join(f"[{it['source']}] ({it['created']})\n{it['text']}" for it in items) \
-        or "(no notes or meetings link to this initiative yet)"
+        or "(no notes or meetings relate to this initiative yet)"
 
     import httpx
     try:
@@ -435,7 +456,7 @@ def initiative_status(name_or_slug: str) -> dict:
                 "model": ANSWER_MODEL,
                 "messages": [
                     {"role": "system", "content": INITIATIVE_STATUS_PROMPT},
-                    {"role": "user", "content": f"Initiative: {title}\n\n{goals_block}\n\nLinked captures:\n{context}"},
+                    {"role": "user", "content": f"Initiative: {title}\nGoals:\n{goals or '(none stated)'}\n\nRelated captures:\n{context}"},
                 ],
                 "temperature": 0.3,
                 "max_tokens": 700,
