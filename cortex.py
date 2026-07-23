@@ -245,8 +245,37 @@ DEFAULT_DICTATION_HOTKEY = "copilot"  # push-to-talk key: "copilot" or "f8"
 DEFAULT_FAST_MODE_MAX_WORDS = 19
 
 
+# Pre-rename config dir. Cortex was formerly "oflow" and stored its settings
+# and transcript history under ~/.oflow; carry those over on first run so a
+# user upgrading from oflow doesn't silently lose their API keys and history.
+LEGACY_SETTINGS_DIR = Path.home() / ".oflow"
+
+
+def migrate_legacy_config() -> None:
+    """One-time migration from the pre-rename ~/.oflow config dir.
+
+    Idempotent: only copies a file when its ~/.cortex counterpart is absent, so
+    it's a no-op once migrated (or on a fresh install with no ~/.oflow).
+    """
+    if not LEGACY_SETTINGS_DIR.is_dir():
+        return
+    import shutil
+
+    SETTINGS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    for name in ("settings.json", "transcripts.jsonl"):
+        src = LEGACY_SETTINGS_DIR / name
+        dst = SETTINGS_FILE.parent / name
+        if src.exists() and not dst.exists():
+            try:
+                shutil.copy2(src, dst)
+                logger.info(f"Migrated {name} from legacy ~/.oflow config")
+            except OSError as e:
+                logger.warning(f"Could not migrate {name} from ~/.oflow: {e}")
+
+
 def ensure_data_dir() -> None:
     """Ensure ~/.cortex directory and default files exist."""
+    migrate_legacy_config()
     SETTINGS_FILE.parent.mkdir(parents=True, exist_ok=True)
 
     # Create default settings file if it doesn't exist
