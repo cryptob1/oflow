@@ -447,15 +447,11 @@ async fn set_shortcut(
             .replace("Alt+", "ALT ")
     };
 
-    // Add new bindings using cortex-ctl helper script. Note & meeting capture ride
-    // on the Copilot key (which holds Super+Shift), so include them when binding
-    // that key — mirrors scripts/cortex-hotkey so the two generators stay in sync.
-    let is_copilot = shortcut.starts_with("XF86") || shortcut.contains("F23");
-    let brain_binds = if is_copilot {
-        "\nunbind = SUPER SHIFT, N\nbind = SUPER SHIFT, N, exec, cortex-ctl note\nunbind = SUPER SHIFT, M\nbind = SUPER SHIFT, M, exec, cortex-ctl meeting"
-    } else {
-        ""
-    };
+    // Add new bindings using cortex-ctl helper script. Note & meeting capture on
+    // Super+Shift+N / Super+Shift+M — ordinary combos that work with any dictation
+    // hotkey (on the Copilot key they're reachable as Copilot+N / Copilot+M, since
+    // it holds Super+Shift). Mirrors scripts/cortex-hotkey so the two stay in sync.
+    let brain_binds = "\nunbind = SUPER SHIFT, N\nbind = SUPER SHIFT, N, exec, cortex-ctl note\nunbind = SUPER SHIFT, M\nbind = SUPER SHIFT, M, exec, cortex-ctl meeting";
     let new_bindings = format!(
         "\n# Cortex voice dictation (push-to-talk: hold {} to record, release to stop)\nbind = {}, exec, cortex-ctl start\nbindr = {}, exec, cortex-ctl stop{}",
         shortcut,

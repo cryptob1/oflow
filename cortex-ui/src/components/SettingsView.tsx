@@ -227,7 +227,7 @@ export function SettingsView() {
     };
 
     const HOTKEY_LABELS: Record<NonNullable<Settings['dictationHotkey']>, string> = {
-        copilot: 'Copilot key', f8: 'F8',
+        copilot: 'Copilot key', f8: 'F8', rctrl: 'Right Ctrl',
     };
 
     const handleHotkeyChange = async (dictationHotkey: NonNullable<Settings['dictationHotkey']>) => {
@@ -473,7 +473,7 @@ export function SettingsView() {
                         <CardDescription>The push-to-talk key — hold to record, release to transcribe & paste.</CardDescription>
                     </CardHeader>
                     <CardContent>
-                        <div className="grid grid-cols-2 gap-3">
+                        <div className="grid grid-cols-3 gap-3">
                             <button
                                 onClick={() => handleHotkeyChange('copilot')}
                                 className={`p-4 rounded-lg border-2 text-left transition-all ${
@@ -500,6 +500,20 @@ export function SettingsView() {
                                 <div className="font-medium">F8</div>
                                 <p className="text-xs text-muted-foreground mt-1">
                                     Function key — works on any keyboard
+                                </p>
+                            </button>
+                            <button
+                                onClick={() => handleHotkeyChange('rctrl')}
+                                className={`p-4 rounded-lg border-2 text-left transition-all ${
+                                    settings.dictationHotkey === 'rctrl'
+                                        ? 'border-primary bg-primary/5'
+                                        : 'border-muted hover:border-muted-foreground/50'
+                                }`}
+                                disabled={isLoading}
+                            >
+                                <div className="font-medium">Right Ctrl</div>
+                                <p className="text-xs text-muted-foreground mt-1">
+                                    Right Control key — for keyboards without a Copilot key
                                 </p>
                             </button>
                         </div>

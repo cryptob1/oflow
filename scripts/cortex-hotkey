@@ -2,7 +2,7 @@
 #
 # cortex-hotkey — set the dictation push-to-talk hotkey in Hyprland.
 #
-#   cortex-hotkey [copilot|f8]
+#   cortex-hotkey [copilot|f8|rctrl]
 #
 # Rewrites the "# Cortex voice dictation" block in ~/.config/hypr/bindings.conf
 # and reloads Hyprland. Idempotent: re-running replaces the existing block.
@@ -11,6 +11,12 @@ set -euo pipefail
 CHOICE="${1:-copilot}"
 CONF="${HYPR_BINDINGS:-$HOME/.config/hypr/bindings.conf}"
 
+# EXTRA_STOP: an optional second release bind. Modifier keys (like Right Ctrl)
+# can still register their own modmask at the instant they're released, so a
+# plain "bindr = , <key>" may not match. Binding the release *with* that modmask
+# too guarantees the stop fires. Harmless for non-modifier keys (left unset).
+EXTRA_STOP=""
+
 case "$CHOICE" in
   copilot)
     # Microsoft Copilot key = Super+Shift+F23 (Hyprland keycode code:201).
@@ -18,8 +24,12 @@ case "$CHOICE" in
     BIND="SUPER SHIFT, code:201"; UNBIND="SUPER SHIFT, code:201"; LABEL="Copilot key" ;;
   f8)
     BIND=", F8"; UNBIND=""; LABEL="F8" ;;
+  rctrl)
+    # Right Ctrl push-to-talk. Control_R is a modifier, so add the CTRL-modmask
+    # release bind to reliably fire the stop on release (see EXTRA_STOP above).
+    BIND=", Control_R"; UNBIND=""; LABEL="Right Ctrl"; EXTRA_STOP="CTRL, Control_R" ;;
   *)
-    echo "cortex-hotkey: unknown hotkey '$CHOICE' (use 'copilot' or 'f8')" >&2; exit 1 ;;
+    echo "cortex-hotkey: unknown hotkey '$CHOICE' (use 'copilot', 'f8' or 'rctrl')" >&2; exit 1 ;;
 esac
 
 [ -f "$CONF" ] || { echo "cortex-hotkey: $CONF not found (Hyprland only)" >&2; exit 1; }
@@ -36,15 +46,15 @@ fi
   [ -n "$UNBIND" ] && echo "unbind = $UNBIND"
   echo "bindd = $BIND, Cortex dictation (hold to talk), exec, ~/.local/bin/cortex-ctl start"
   echo "bindr = $BIND, exec, ~/.local/bin/cortex-ctl stop"
-  # Note & meeting capture ride on the Copilot key (which holds Super+Shift):
-  # Copilot+N toggles a hands-free note; Copilot+M toggles a system+mic meeting.
-  # Emitted inside this block so they survive the block regeneration above.
-  if [ "$CHOICE" = "copilot" ]; then
-    echo "unbind = SUPER SHIFT, N"
-    echo "bind = SUPER SHIFT, N, exec, ~/.local/bin/cortex-ctl note"
-    echo "unbind = SUPER SHIFT, M"
-    echo "bind = SUPER SHIFT, M, exec, ~/.local/bin/cortex-ctl meeting"
-  fi
+  [ -n "$EXTRA_STOP" ] && echo "bindr = $EXTRA_STOP, exec, ~/.local/bin/cortex-ctl stop"
+  # Note & meeting capture on Super+Shift+N / Super+Shift+M. These are ordinary
+  # combos, so they work with any dictation hotkey — on the Copilot key they're
+  # reachable as Copilot+N / Copilot+M (it holds Super+Shift). Emitted inside this
+  # block so they survive the block regeneration above.
+  echo "unbind = SUPER SHIFT, N"
+  echo "bind = SUPER SHIFT, N, exec, ~/.local/bin/cortex-ctl note"
+  echo "unbind = SUPER SHIFT, M"
+  echo "bind = SUPER SHIFT, M, exec, ~/.local/bin/cortex-ctl meeting"
 } >> "$CONF"
 
 hyprctl reload >/dev/null 2>&1 || true
