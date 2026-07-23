@@ -146,7 +146,7 @@ export interface VaultEntry {
  * Reads the vault's notes/ or meetings/ folder (via the Rust backend, which
  * resolves the configured vault path). Newest first; [] if none yet.
  */
-export async function readVault(kind: 'notes' | 'meetings' | 'initiatives' | 'dreams' | 'reminders'): Promise<VaultEntry[]> {
+export async function readVault(kind: 'notes' | 'meetings' | 'initiatives' | 'dreams' | 'reminders' | 'journal'): Promise<VaultEntry[]> {
     try {
         return await invoke<VaultEntry[]>('read_vault', { kind });
     } catch (error) {
@@ -206,6 +206,19 @@ export interface DreamResult {
 
 export async function runDream(): Promise<DreamResult> {
     return await invoke<DreamResult>('run_dream');
+}
+
+/** Result of synthesizing today's journal from the dictation stream. */
+export interface JournalResult {
+    date: string;
+    dictations: number;
+    journal: string;
+    skipped: boolean;
+    reason: string;
+}
+
+export async function runJournal(): Promise<JournalResult> {
+    return await invoke<JournalResult>('run_journal');
 }
 
 /**

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { LayoutDashboard, History, Settings, Mic, StickyNote, Users, Sparkles, Target, Moon, Bell } from "lucide-react";
+import { LayoutDashboard, History, Settings, Mic, StickyNote, Users, Sparkles, Target, Moon, Bell, BookText } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { ToastProvider } from "@/components/ui/toast";
@@ -9,10 +9,11 @@ import { VaultView } from "@/components/VaultView";
 import { AskView } from "@/components/AskView";
 import { InitiativesView } from "@/components/InitiativesView";
 import { DreamsView } from "@/components/DreamsView";
+import { JournalView } from "@/components/JournalView";
 import { SettingsView } from "@/components/SettingsView";
 import { showWindow } from "@/lib/api";
 
-type Tab = "dashboard" | "ask" | "initiatives" | "dreams" | "reminders" | "history" | "notes" | "meetings" | "settings";
+type Tab = "dashboard" | "ask" | "initiatives" | "dreams" | "journal" | "reminders" | "history" | "notes" | "meetings" | "settings";
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<Tab>("dashboard");
@@ -64,6 +65,13 @@ export default function App() {
               Dreams
             </NavButton>
             <NavButton
+              active={activeTab === "journal"}
+              onClick={() => setActiveTab("journal")}
+              icon={<BookText className="h-4 w-4" />}
+            >
+              Journal
+            </NavButton>
+            <NavButton
               active={activeTab === "reminders"}
               onClick={() => setActiveTab("reminders")}
               icon={<Bell className="h-4 w-4" />}
@@ -111,6 +119,7 @@ export default function App() {
           {activeTab === "ask" && <AskView />}
           {activeTab === "initiatives" && <InitiativesView />}
           {activeTab === "dreams" && <DreamsView />}
+          {activeTab === "journal" && <JournalView />}
           {activeTab === "reminders" && <VaultView kind="reminders" title="Reminders" subtitle="Say &quot;remind me to…&quot; in a note — oflow notifies you when it's due." />}
           {activeTab === "history" && <HistoryView />}
           {activeTab === "notes" && <VaultView kind="notes" title="Notes" subtitle="Quick notes you captured with Copilot+N." />}

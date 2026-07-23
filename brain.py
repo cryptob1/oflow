@@ -324,6 +324,21 @@ def mark_reminder(path: Path, status: str = "done") -> None:
         _commit(_vault(), path, f"reminder {status}: {path.name}")
 
 
+def add_journal(date_str: str, content: str, timestamp: datetime | None = None) -> Path:
+    """Write the synthesized daily journal (one file per day; re-running overwrites)."""
+    ts = timestamp or datetime.now()
+    vault = _vault()
+    d = vault / "journal"
+    d.mkdir(parents=True, exist_ok=True)
+    f = d / f"{date_str}.md"
+    fields = {"id": new_id(ts), "type": "journal", "created": ts.isoformat(),
+              "source": "oflow-journal", "title": f"Journal — {date_str}"}
+    f.write_text(_yaml_frontmatter(fields) + "\n" + content.strip() + "\n")
+    _commit(vault, f, f"journal: {date_str}")
+    logger.info(f"Journal saved to {f}")
+    return f
+
+
 def add_meeting(transcript: str, summary: str, timestamp: datetime | None = None) -> Path:
     """Write a meeting (summary + full transcript) to its own Markdown file."""
     ts = timestamp or datetime.now()

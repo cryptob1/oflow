@@ -811,13 +811,16 @@ class StorageManager:
         self.transcripts_file = TRANSCRIPTS_FILE
         self.transcripts_file.parent.mkdir(parents=True, exist_ok=True)
 
-    def save_transcript(self, raw: str, cleaned: str, timestamp: str):
-        """Append transcript to JSONL file."""
+    def save_transcript(self, raw: str, cleaned: str, timestamp: str, app: str = ""):
+        """Append transcript to JSONL file. `app` records the focused window (which
+        tool the dictation went into) so the daily journal can reconstruct context."""
         entry = {
             "timestamp": timestamp,
             "raw": raw,
             "cleaned": cleaned,
         }
+        if app:
+            entry["app"] = app
         with open(self.transcripts_file, "a") as f:
             f.write(json.dumps(entry) + "\n")
         logger.info(f"Saved transcript #{self.count_transcripts()}")
@@ -3320,6 +3323,7 @@ class VoiceDictationServer:
             raw=raw_text,
             cleaned=cleaned_text,
             timestamp=datetime.now().isoformat(),
+            app=_active_window_desc(),
         )
 
     def run(self):

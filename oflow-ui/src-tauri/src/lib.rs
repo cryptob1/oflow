@@ -140,7 +140,7 @@ fn vault_dir() -> std::path::PathBuf {
 /// newest first. Returns an empty list if the folder doesn't exist yet.
 #[tauri::command]
 fn read_vault(kind: String) -> Result<Vec<VaultEntry>, String> {
-    if !matches!(kind.as_str(), "notes" | "meetings" | "initiatives" | "dreams" | "reminders") {
+    if !matches!(kind.as_str(), "notes" | "meetings" | "initiatives" | "dreams" | "reminders" | "journal") {
         return Err("invalid vault kind".to_string());
     }
     let dir = vault_dir().join(&kind);
@@ -300,6 +300,27 @@ struct DreamResult {
 async fn run_dream() -> Result<DreamResult, String> {
     // Manual dream always runs (the nightly timer coordinates via --dream alone).
     let json = run_brain_json(&["--dream", "--force"])?;
+    serde_json::from_str(&json).map_err(|e| format!("parse error: {}", e))
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct JournalResult {
+    #[serde(default)]
+    date: String,
+    #[serde(default)]
+    dictations: u32,
+    #[serde(default)]
+    journal: String,
+    #[serde(default)]
+    skipped: bool,
+    #[serde(default)]
+    reason: String,
+}
+
+/// Synthesize today's journal from the dictation stream, on demand.
+#[tauri::command]
+async fn run_journal() -> Result<JournalResult, String> {
+    let json = run_brain_json(&["--journal"])?;
     serde_json::from_str(&json).map_err(|e| format!("parse error: {}", e))
 }
 
@@ -781,7 +802,8 @@ pub fn run() {
             ask_brain,
             list_initiatives,
             initiative_status,
-            run_dream
+            run_dream,
+            run_journal
         ])
         .run(tauri::generate_context!())
         .map_err(|e| {

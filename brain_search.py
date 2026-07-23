@@ -585,11 +585,82 @@ def dream(force: bool = False) -> dict:
         updated.append({"title": it["title"], "linked": st["linked"]})
     stale = [it["title"] for it in inits if it["linked"] == 0]
     suggestions = _suggest_initiatives()
+    # Journal the day that just ended (dictation stream → a daily "what I worked on").
+    try:
+        journal_day((ts - timedelta(days=1)).strftime("%Y-%m-%d"))
+    except Exception:
+        logger.debug("Daily journal failed", exc_info=True)
     journal = _write_dream_journal(linked, updated, stale, suggestions, ts)
     logger.info(f"Dream: {len(inits)} initiatives refreshed, {linked} re-linked, "
                 f"{len(suggestions)} suggestion(s)")
     return {"relinked": linked, "initiatives": len(inits), "stale": stale,
             "suggestions": suggestions, "journal": journal.name}
+
+
+# --------------------------------------------------------------------------- #
+# Daily journal — synthesize a "what did I work on" log from the dictation stream
+# --------------------------------------------------------------------------- #
+from datetime import timedelta  # noqa: E402
+
+TRANSCRIPTS_FILE = Path.home() / ".oflow" / "transcripts.jsonl"
+
+JOURNAL_PROMPT = (
+    "You are writing the user's personal daily journal from their voice dictations "
+    "throughout the day. Each line is a timestamped snippet they spoke into some app "
+    "(the app/window, when known, is in brackets) — chat, email, editor, browser, docs. "
+    "Topics jump around and there's noise (short confirmations, commands, half-thoughts). "
+    "Reconstruct a concise, readable journal of what they actually worked on: group by "
+    "theme/project, note roughly WHEN (times, or morning/afternoon/evening) and — where "
+    "clear — in which tool. Surface notable decisions, threads, and to-dos. Ignore trivial "
+    "snippets. Output Markdown: a one-line **Summary**, then a short **## Timeline** and a "
+    "**## By theme** section with bullets. First person, terse. Base it only on the dictations."
+)
+
+
+def journal_day(date_str: str | None = None) -> dict:
+    """Synthesize a daily journal from that day's dictations (transcripts.jsonl)."""
+    date_str = date_str or datetime.now().strftime("%Y-%m-%d")
+    if not TRANSCRIPTS_FILE.exists():
+        return {"skipped": True, "reason": "no dictations", "date": date_str}
+    lines = []
+    for raw_line in TRANSCRIPTS_FILE.read_text().splitlines():
+        try:
+            d = json.loads(raw_line)
+        except ValueError:
+            continue
+        ts = d.get("timestamp", "")
+        if not ts.startswith(date_str):
+            continue
+        text = (d.get("cleaned") or d.get("raw") or "").strip()
+        if len(text) < 3:
+            continue
+        app = d.get("app", "")
+        lines.append(f"[{ts[11:16]}]" + (f" [{app}]" if app else "") + f" {text}")
+    if len(lines) < 3:
+        return {"skipped": True, "reason": f"only {len(lines)} dictations", "date": date_str}
+    key = _groq_key()
+    if not key:
+        return {"skipped": True, "reason": "no groq key", "date": date_str}
+
+    import httpx
+    try:
+        resp = httpx.post(
+            GROQ_CHAT_URL, headers={"Authorization": f"Bearer {key}"},
+            json={"model": ANSWER_MODEL,
+                  "messages": [{"role": "system", "content": JOURNAL_PROMPT},
+                               {"role": "user", "content": "\n".join(lines)}],
+                  "temperature": 0.4, "max_tokens": 1000},
+            timeout=45,
+        )
+        if resp.status_code != 200:
+            return {"skipped": True, "reason": f"groq {resp.status_code}", "date": date_str}
+        content = resp.json()["choices"][0]["message"]["content"].strip()
+    except Exception as e:
+        return {"skipped": True, "reason": str(e), "date": date_str}
+
+    path = brain.add_journal(date_str, content)
+    logger.info(f"Journal for {date_str}: {len(lines)} dictations")
+    return {"date": date_str, "dictations": len(lines), "journal": path.name}
 
 
 def main() -> None:
@@ -625,6 +696,13 @@ def main() -> None:
     if args[0] == "--initiative":
         data = initiative_status(" ".join(args[1:]))
         print(json.dumps(data) if as_json else f"# {data['title']}\n\n{data['status']}")
+        return
+    if args[0] == "--journal":
+        date = next((a for a in args[1:] if a[0].isdigit()), None)
+        r = journal_day(date)
+        print(json.dumps(r) if as_json else
+              (f"Journaled {r['date']} from {r['dictations']} dictations → journal/{r['journal']}"
+               if not r.get("skipped") else f"No journal: {r.get('reason')}"))
         return
     if args[0] == "--dream":
         r = dream(force="--force" in args)
