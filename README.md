@@ -1,20 +1,28 @@
-# cortex — Wispr Flow–grade Voice Typing for Linux, Powered by Groq
+# Cortex — Speak. It Types, Remembers, and Organizes.
 
-**The most accurate voice‑to‑text dictation on Linux — and it's effectively free.**
-Hold the **Copilot key**, speak, release: your words are transcribed and pasted into any app — your editor, terminal, browser, or an AI chat prompt.
+**Wispr Flow–grade voice typing for Linux — plus a voice-powered second brain.**
+Hold the **Copilot key** and talk: Cortex transcribes into any app in ~0.5s. But it doesn't stop at typing — speak a note, record a meeting, set a goal, or drop a reminder, all hands-free, and Cortex files it, links it, and reflects on it for you. Powered by [Groq](https://groq.com), and effectively **free**.
 
 <!--
   ⭐ DEMO GIF — this is the single biggest driver of GitHub stars. Record a ~5s clip
   (hold the Copilot key → overlay appears → speak → text pastes), save it to docs/demo.gif, and
   uncomment the line below:
-  <p align="center"><img src="docs/demo.gif" alt="cortex — hold the Copilot key, speak, and your words paste into any app" width="640"></p>
+  <p align="center"><img src="docs/demo.gif" alt="Cortex — hold the Copilot key, speak, and your words paste into any app" width="640"></p>
 -->
 
-cortex is like [Voxtype](https://voxtype.io) or [Wispr Flow](https://wisprflow.ai), but instead of running a *small* Whisper model on your laptop, it transcribes with **[Groq](https://groq.com)'s hosted Whisper `large‑v3‑turbo`** — the *full*, accurate model, in ~0.5s, with **no GPU, no 3 GB of resident RAM, and no model setup**. Local dictation forces a trade between fast‑but‑inaccurate and accurate‑but‑slow; Groq breaks it.
+### What you can do with your voice
 
-> **Will a cloud API cost me anything?** Almost certainly not. Groq's free tier is **~2,000 transcriptions per day** — far more than anyone speaks. Past that it's just **$0.04 per hour of audio** (≈9× cheaper than OpenAI); a month of heavy daily use is a few cents. ([Groq pricing](https://groq.com/pricing))
+- 🎙️ **Dictate anywhere** — hold, speak, release → your words paste into your editor, terminal, browser, or an AI prompt. The *full* Whisper `large-v3-turbo` model in ~0.5s — no GPU, no resident RAM, no model downloads.
+- 🧠 **Capture** — notes (**Copilot+N**), meetings (**Copilot+M** — records system + mic, auto-transcribed & summarized), goals (*"start an initiative to…"*), and reminders (*"remind me to… Friday at 3"*) — into a plain-Markdown, [Obsidian](https://obsidian.md)-compatible vault.
+- 🎯 **Organize itself** — every note and meeting auto-links to the goals it advances, each with an AI coach-style status.
+- 🌙 **Reflect nightly** — Cortex consolidates your captures into your goals and reconstructs *what you actually worked on* each day, straight from your dictations, as a readable journal.
+- 🔎 **Ask your brain** — natural-language, cited answers over everything you've captured. Local embeddings, no extra API key.
 
-Built for **Wayland**, **Hyprland**, and **Omarchy**. Open source, transcripts stored locally, no telemetry.
+**The payoff:** stop typing notes, writing meeting minutes, and updating trackers. Just talk — and your work organizes itself.
+
+> **What does it cost?** Almost nothing. Groq's free tier is **~2,000 transcriptions/day** — more than anyone speaks. Past that it's **$0.04 per hour of audio** (≈9× cheaper than OpenAI); a month of heavy use is a few cents. ([Groq pricing](https://groq.com/pricing))
+
+Built for **Wayland**, **Hyprland**, and **Omarchy**. Open source · plain-Markdown, stored locally · no telemetry.
 
 ## Features
 
