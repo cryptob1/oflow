@@ -7,7 +7,7 @@ import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from oflow import (
+from cortex import (
     segment_spoken_actions,
     should_skip_cleanup,
     DEFAULT_FAST_MODE_MAX_WORDS,
@@ -140,11 +140,11 @@ class TestWakeWordConfig:
         assert segment_spoken_actions("jarvis enter", wake_word="computer") == [("text", "jarvis enter")]
 
     @pytest.mark.unit
-    @pytest.mark.parametrize("variant", ["oflow", "oflo", "o flow", "oh flow", "off flow"])
-    def test_oflow_fuzzy_variants_when_configured(self, variant):
-        # "oflow" is a coined word Whisper scatters, so it keeps fuzzy variants
+    @pytest.mark.parametrize("variant", ["cortex", "oflo", "o flow", "oh flow", "off flow"])
+    def test_cortex_fuzzy_variants_when_configured(self, variant):
+        # "cortex" is a coined word Whisper scatters, so it keeps fuzzy variants
         # when a user explicitly chooses it.
-        assert kinds(segment_spoken_actions(f"{variant} enter", wake_word="oflow")) == ["key"]
+        assert kinds(segment_spoken_actions(f"{variant} enter", wake_word="cortex")) == ["key"]
 
 
 class TestInterleaved:

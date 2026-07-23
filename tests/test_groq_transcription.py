@@ -20,7 +20,7 @@ import os
 from pathlib import Path
 
 # Paths
-SETTINGS_FILE = Path.home() / ".oflow" / "settings.json"
+SETTINGS_FILE = Path.home() / ".cortex" / "settings.json"
 TEST_AUDIO_FILE = Path(__file__).parent / "test_audio.wav"
 
 SAMPLE_RATE = 16000

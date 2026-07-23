@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 #
-# oflow-hotkey — set the dictation push-to-talk hotkey in Hyprland.
+# cortex-hotkey — set the dictation push-to-talk hotkey in Hyprland.
 #
-#   oflow-hotkey [copilot|f8]
+#   cortex-hotkey [copilot|f8]
 #
-# Rewrites the "# Oflow voice dictation" block in ~/.config/hypr/bindings.conf
+# Rewrites the "# Cortex voice dictation" block in ~/.config/hypr/bindings.conf
 # and reloads Hyprland. Idempotent: re-running replaces the existing block.
 set -euo pipefail
 
@@ -19,33 +19,33 @@ case "$CHOICE" in
   f8)
     BIND=", F8"; UNBIND=""; LABEL="F8" ;;
   *)
-    echo "oflow-hotkey: unknown hotkey '$CHOICE' (use 'copilot' or 'f8')" >&2; exit 1 ;;
+    echo "cortex-hotkey: unknown hotkey '$CHOICE' (use 'copilot' or 'f8')" >&2; exit 1 ;;
 esac
 
-[ -f "$CONF" ] || { echo "oflow-hotkey: $CONF not found (Hyprland only)" >&2; exit 1; }
+[ -f "$CONF" ] || { echo "cortex-hotkey: $CONF not found (Hyprland only)" >&2; exit 1; }
 
-# Drop any existing oflow block (its comment line through the next blank line).
-if grep -q "# Oflow voice dictation" "$CONF"; then
-  sed -i '/# Oflow voice dictation/,/^$/d' "$CONF"
+# Drop any existing cortex block (its comment line through the next blank line).
+if grep -q "# Cortex voice dictation" "$CONF"; then
+  sed -i '/# Cortex voice dictation/,/^$/d' "$CONF"
 fi
 
 {
   echo ""
-  echo "# Oflow voice dictation"
+  echo "# Cortex voice dictation"
   echo "# Push-to-talk: hold the $LABEL to record, release to stop & paste"
   [ -n "$UNBIND" ] && echo "unbind = $UNBIND"
-  echo "bindd = $BIND, Oflow dictation (hold to talk), exec, ~/.local/bin/oflow-ctl start"
-  echo "bindr = $BIND, exec, ~/.local/bin/oflow-ctl stop"
+  echo "bindd = $BIND, Cortex dictation (hold to talk), exec, ~/.local/bin/cortex-ctl start"
+  echo "bindr = $BIND, exec, ~/.local/bin/cortex-ctl stop"
   # Note & meeting capture ride on the Copilot key (which holds Super+Shift):
   # Copilot+N toggles a hands-free note; Copilot+M toggles a system+mic meeting.
   # Emitted inside this block so they survive the block regeneration above.
   if [ "$CHOICE" = "copilot" ]; then
     echo "unbind = SUPER SHIFT, N"
-    echo "bind = SUPER SHIFT, N, exec, ~/.local/bin/oflow-ctl note"
+    echo "bind = SUPER SHIFT, N, exec, ~/.local/bin/cortex-ctl note"
     echo "unbind = SUPER SHIFT, M"
-    echo "bind = SUPER SHIFT, M, exec, ~/.local/bin/oflow-ctl meeting"
+    echo "bind = SUPER SHIFT, M, exec, ~/.local/bin/cortex-ctl meeting"
   fi
 } >> "$CONF"
 
 hyprctl reload >/dev/null 2>&1 || true
-echo "oflow hotkey set to: $LABEL"
+echo "cortex hotkey set to: $LABEL"

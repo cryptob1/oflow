@@ -8,13 +8,13 @@ import io
 import numpy as np
 import pytest
 
-# Import from oflow module
+# Import from cortex module
 import sys
 import os
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from oflow import (
+from cortex import (
     AudioValidator,
     AudioProcessor,
     SAMPLE_RATE,

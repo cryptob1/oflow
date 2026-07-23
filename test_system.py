@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-System check script for oflow.
+System check script for cortex.
 Validates dependencies, configuration, and API connectivity.
 """
 
@@ -71,14 +71,14 @@ def check_dependencies() -> tuple[int, int]:
 
 
 def check_configuration() -> tuple[int, int]:
-    """Check oflow configuration."""
+    """Check cortex configuration."""
     print_header("Configuration")
 
     passed = 0
     total = 3
 
     # Check settings file
-    settings_file = Path.home() / ".oflow" / "settings.json"
+    settings_file = Path.home() / ".cortex" / "settings.json"
     settings_exists = settings_file.exists()
     print(f"  {check_mark(settings_exists)} Settings file: {settings_file}")
     if settings_exists:
@@ -105,7 +105,7 @@ def check_configuration() -> tuple[int, int]:
             print(
                 f"      {YELLOW}⚠  API key looks duplicated (length: {len(api_key)}, expected ~56){RESET}"
             )
-            print(f"      {YELLOW}   Check ~/.oflow/settings.json{RESET}")
+            print(f"      {YELLOW}   Check ~/.cortex/settings.json{RESET}")
     else:
         if provider == "groq":
             print(f"      {YELLOW}→ Get a free key at: https://console.groq.com/keys{RESET}")
@@ -118,7 +118,7 @@ def check_configuration() -> tuple[int, int]:
     if socket_exists:
         passed += 1
     else:
-        print(f"      {YELLOW}→ Start with: python oflow.py &{RESET}")
+        print(f"      {YELLOW}→ Start with: python cortex.py &{RESET}")
 
     return passed, total
 
@@ -149,7 +149,7 @@ async def check_api() -> tuple[int, int]:
     total = 1
 
     # Load API key
-    settings_file = Path.home() / ".oflow" / "settings.json"
+    settings_file = Path.home() / ".cortex" / "settings.json"
     api_key = None
     provider = "groq"
 
@@ -209,7 +209,7 @@ def check_audio() -> tuple[int, int]:
 
 async def main():
     """Run all system checks."""
-    print(f"\n{BOLD}oflow System Check{RESET}")
+    print(f"\n{BOLD}cortex System Check{RESET}")
     print(f"{'=' * 40}\n")
 
     total_passed = 0
@@ -253,7 +253,7 @@ async def main():
         print(f"\n  {YELLOW}See messages above for how to fix issues.{RESET}")
         sys.exit(1)
     else:
-        print(f"\n  {GREEN}Your system is ready to use oflow!{RESET}")
+        print(f"\n  {GREEN}Your system is ready to use cortex!{RESET}")
         print(f"  Press {BOLD}Super+D{RESET} to start recording.")
         sys.exit(0)
 

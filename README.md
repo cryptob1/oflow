@@ -1,4 +1,4 @@
-# oflow — Wispr Flow–grade Voice Typing for Linux, Powered by Groq
+# cortex — Wispr Flow–grade Voice Typing for Linux, Powered by Groq
 
 **The most accurate voice‑to‑text dictation on Linux — and it's effectively free.**
 Hold the **Copilot key**, speak, release: your words are transcribed and pasted into any app — your editor, terminal, browser, or an AI chat prompt.
@@ -7,10 +7,10 @@ Hold the **Copilot key**, speak, release: your words are transcribed and pasted 
   ⭐ DEMO GIF — this is the single biggest driver of GitHub stars. Record a ~5s clip
   (hold the Copilot key → overlay appears → speak → text pastes), save it to docs/demo.gif, and
   uncomment the line below:
-  <p align="center"><img src="docs/demo.gif" alt="oflow — hold the Copilot key, speak, and your words paste into any app" width="640"></p>
+  <p align="center"><img src="docs/demo.gif" alt="cortex — hold the Copilot key, speak, and your words paste into any app" width="640"></p>
 -->
 
-oflow is like [Voxtype](https://voxtype.io) or [Wispr Flow](https://wisprflow.ai), but instead of running a *small* Whisper model on your laptop, it transcribes with **[Groq](https://groq.com)'s hosted Whisper `large‑v3‑turbo`** — the *full*, accurate model, in ~0.5s, with **no GPU, no 3 GB of resident RAM, and no model setup**. Local dictation forces a trade between fast‑but‑inaccurate and accurate‑but‑slow; Groq breaks it.
+cortex is like [Voxtype](https://voxtype.io) or [Wispr Flow](https://wisprflow.ai), but instead of running a *small* Whisper model on your laptop, it transcribes with **[Groq](https://groq.com)'s hosted Whisper `large‑v3‑turbo`** — the *full*, accurate model, in ~0.5s, with **no GPU, no 3 GB of resident RAM, and no model setup**. Local dictation forces a trade between fast‑but‑inaccurate and accurate‑but‑slow; Groq breaks it.
 
 > **Will a cloud API cost me anything?** Almost certainly not. Groq's free tier is **~2,000 transcriptions per day** — far more than anyone speaks. Past that it's just **$0.04 per hour of audio** (≈9× cheaper than OpenAI); a month of heavy daily use is a few cents. ([Groq pricing](https://groq.com/pricing))
 
@@ -23,12 +23,12 @@ Built for **Wayland**, **Hyprland**, and **Omarchy**. Open source, transcripts s
 - **One-shot paste** — Pastes the whole result at once (via ydotool), not char-by-char
 - **🧠 Second brain** — capture notes (**Copilot+N**) & meetings (**Copilot+M**) into a plain-Markdown, Obsidian-compatible vault ([see below](#-second-brain))
 - **🎯 Initiatives** — say *"start an initiative…"*; notes & meetings auto-link to your goals, with an AI status per goal
-- **🌙 Dreams & 📖 Journal** — nightly, oflow consolidates your captures into your goals and reconstructs *what you worked on* each day from your dictations
-- **⏰ Reminders** — say *"remind me to… Friday at 3"*; oflow notifies you when it's due
+- **🌙 Dreams & 📖 Journal** — nightly, cortex consolidates your captures into your goals and reconstructs *what you worked on* each day from your dictations
+- **⏰ Reminders** — say *"remind me to… Friday at 3"*; cortex notifies you when it's due
 - **Ask your brain** — natural-language, cited search over your whole vault — local embeddings, no extra API key
 - **On-screen overlay** — Live recording level meter at the bottom of the screen
 - **Pauses your media** — Auto-pauses playing music/video while you dictate, resumes after
-- **Voice commands** — Say "jarvis scratch that", "jarvis select all", "jarvis enter" and oflow presses the real keys ([see below](#-voice-commands))
+- **Voice commands** — Say "jarvis scratch that", "jarvis select all", "jarvis enter" and cortex presses the real keys ([see below](#-voice-commands))
 - **Fast mode** — Skips AI cleanup on short dictations for instant output
 - **Smart cleanup** — Auto-fixes grammar, removes filler words, formats text
 - **Waybar integration** — Click status icon to open settings, visual feedback while recording
@@ -36,11 +36,11 @@ Built for **Wayland**, **Hyprland**, and **Omarchy**. Open source, transcripts s
 - **Privacy-conscious** — Transcripts, notes & meetings stored locally in a plain-Markdown vault; no telemetry; audio is sent only to your transcription provider and never stored
 - **Open source** — Built with Python + Tauri
 
-## How oflow compares to local voice dictation (Voxtype, nerd‑dictation)
+## How cortex compares to local voice dictation (Voxtype, nerd‑dictation)
 
-Most open‑source Linux dictation tools (Voxtype, nerd‑dictation, numen) run a **small Whisper model on your own CPU/GPU** to stay fast. oflow takes the opposite trade‑off: it sends your audio to **Groq's hosted Whisper `large‑v3‑turbo`**, then runs an LLM cleanup pass — so you get a *large, accurate* model at *low latency*.
+Most open‑source Linux dictation tools (Voxtype, nerd‑dictation, numen) run a **small Whisper model on your own CPU/GPU** to stay fast. cortex takes the opposite trade‑off: it sends your audio to **Groq's hosted Whisper `large‑v3‑turbo`**, then runs an LLM cleanup pass — so you get a *large, accurate* model at *low latency*.
 
-| | **oflow** (Groq cloud) | **Local models** (Voxtype default, nerd‑dictation) |
+| | **cortex** (Groq cloud) | **Local models** (Voxtype default, nerd‑dictation) |
 |---|---|---|
 | Speech model | Whisper **large‑v3‑turbo** (server‑side) | Small Whisper (tiny/base) on your hardware |
 | **Accuracy** | Higher — full large model | Lower — small model chosen to stay fast |
@@ -49,7 +49,7 @@ Most open‑source Linux dictation tools (Voxtype, nerd‑dictation, numen) run 
 | Works offline | No (needs internet for the transcription call) | Yes |
 | Battery | Light (compute is off‑device) | Heavier per dictation |
 
-**The verdict:** if you're ever offline, use a local tool. Otherwise there's no contest — oflow gives you a *larger, more accurate* model at *lower latency*, with *no GPU, no RAM cost, no model downloads, and no real bill*. You stop choosing between "fast" and "accurate."
+**The verdict:** if you're ever offline, use a local tool. Otherwise there's no contest — cortex gives you a *larger, more accurate* model at *lower latency*, with *no GPU, no RAM cost, no model downloads, and no real bill*. You stop choosing between "fast" and "accurate."
 
 ## Install — one command (Arch / Omarchy)
 
@@ -64,12 +64,12 @@ Installs everything — dependencies, the app, the **Copilot-key** hotkey, the r
 Open your terminal AI agent (Claude Code, Cursor, Aider, …) and paste this prompt **verbatim**:
 
 ```text
-Install oflow (voice dictation for Linux) from https://github.com/cryptob1/oflow on
+Install cortex (voice dictation for Linux) from https://github.com/cryptob1/oflow on
 this Arch/Omarchy machine:
 1. Run: curl -fsSL https://raw.githubusercontent.com/cryptob1/oflow/master/install.sh | bash
 2. Make sure the ydotoold user service is enabled (systemctl --user enable --now ydotool.service).
 3. Then ask me for my Groq API key (https://console.groq.com/keys), write it to
-   ~/.oflow/settings.json as "groqApiKey", and restart oflow.
+   ~/.cortex/settings.json as "groqApiKey", and restart cortex.
 4. Tell me to hold the Copilot key to dictate.
 ```
 
@@ -88,8 +88,8 @@ sudo usermod -aG input "$USER"
 systemctl --user enable --now ydotool.service
 
 # Build & install
-git clone https://github.com/cryptob1/oflow.git ~/code/oflow
-cd ~/code/oflow && make install
+git clone https://github.com/cryptob1/oflow.git ~/code/cortex
+cd ~/code/cortex && make install
 ```
 </details>
 
@@ -113,9 +113,9 @@ Hold the Copilot key → Speak → Release → Text appears in active window
 
 ## 🎙️ Voice commands
 
-Dictation is more than typing — say **"jarvis"** followed by a command and oflow presses the real keys, anywhere in a sentence:
+Dictation is more than typing — say **"jarvis"** followed by a command and cortex presses the real keys, anywhere in a sentence:
 
-| Say… | …and oflow does |
+| Say… | …and cortex does |
 |------|-----------------|
 | **"jarvis scratch that"** | deletes your last dictation — the magic undo |
 | **"jarvis enter"** / **"jarvis send it"** | presses Enter (submit a chat or prompt) |
@@ -131,7 +131,7 @@ The wake word is configurable in **Settings → Spoken Commands** (default `jarv
 
 ## 🧠 Second brain
 
-Beyond dictation, oflow captures into a personal knowledge base — a plain-Markdown **vault** (default `~/brain`, or a subfolder of your existing [Obsidian](https://obsidian.md) vault). Every item is one Markdown file with a human title and YAML frontmatter, so it reads cleanly in Obsidian and syncs conflict-free. Then it **organizes and reflects on** what you capture.
+Beyond dictation, cortex captures into a personal knowledge base — a plain-Markdown **vault** (default `~/brain`, or a subfolder of your existing [Obsidian](https://obsidian.md) vault). Every item is one Markdown file with a human title and YAML frontmatter, so it reads cleanly in Obsidian and syncs conflict-free. Then it **organizes and reflects on** what you capture.
 
 ### Capture — all by voice
 
@@ -147,13 +147,13 @@ Extra hotkeys ride on the Copilot key (which holds Super+Shift, so these are `Su
 
 ### Ask your brain
 
-The app's **Ask** tab (and the `oflow-brain` CLI) answer natural-language questions over your whole vault:
+The app's **Ask** tab (and the `cortex-brain` CLI) answer natural-language questions over your whole vault:
 
 ```bash
-oflow-brain "what did we decide about onboarding?"
+cortex-brain "what did we decide about onboarding?"
 ```
 
-A **local RAG**: content is embedded on-device with [`fastembed`](https://github.com/qdrant/fastembed) (ONNX, no API key), the most relevant chunks are retrieved, and Groq synthesizes a **cited** answer. The index lives outside the vault (`~/.cache/oflow`, rebuildable) so it never bloats sync.
+A **local RAG**: content is embedded on-device with [`fastembed`](https://github.com/qdrant/fastembed) (ONNX, no API key), the most relevant chunks are retrieved, and Groq synthesizes a **cited** answer. The index lives outside the vault (`~/.cache/cortex`, rebuildable) so it never bloats sync.
 
 ### Initiatives — goals your brain tracks
 
@@ -166,9 +166,9 @@ Every note and meeting is **automatically linked** to the initiatives it relates
 
 ### Sync across devices
 
-The vault is just a folder of Markdown, so sync it with whatever you like — and oflow is built to be **multi-device-safe** (one file per capture, deduped reminders, self-coordinating dreams, index kept out of the vault):
+The vault is just a folder of Markdown, so sync it with whatever you like — and cortex is built to be **multi-device-safe** (one file per capture, deduped reminders, self-coordinating dreams, index kept out of the vault):
 
-- **Obsidian Sync** — put the vault inside your Obsidian vault (a `<vault>/oflow` subfolder); set **Search root** to the whole vault so Ask covers your existing notes too. Keep Obsidian running (autostart) for continuous sync. *Easiest if you already use Obsidian.*
+- **Obsidian Sync** — put the vault inside your Obsidian vault (a `<vault>/cortex` subfolder); set **Search root** to the whole vault so Ask covers your existing notes too. Keep Obsidian running (autostart) for continuous sync. *Easiest if you already use Obsidian.*
 - **Syncthing** — background, free, private P2P (great incl. Android).
 - **Cloud drive / git** — a Dropbox/Drive folder, or a private git remote (enable **auto-push** in Settings).
 
@@ -176,21 +176,21 @@ Read and search everything on your phone with **Obsidian mobile**. New machine? 
 
 ## Multi-machine setup
 
-oflow is **sync-agnostic**: it reads and writes a plain-Markdown folder, and everything is designed to be safe across machines — one file per capture (never collide), reminders deduped across devices, dreams self-coordinate to one run per night, and the search index lives *outside* the vault so it never syncs. Pick any sync tool for the vault folder; oflow does the rest.
+cortex is **sync-agnostic**: it reads and writes a plain-Markdown folder, and everything is designed to be safe across machines — one file per capture (never collide), reminders deduped across devices, dreams self-coordinate to one run per night, and the search index lives *outside* the vault so it never syncs. Pick any sync tool for the vault folder; cortex does the rest.
 
-**New machine — one command** (does the oflow side; the vault syncs via your chosen tool):
+**New machine — one command** (does the cortex side; the vault syncs via your chosen tool):
 
 ```bash
-git clone https://github.com/cryptob1/oflow.git ~/code/oflow
-bash ~/code/oflow/scripts/setup-machine.sh
+git clone https://github.com/cryptob1/oflow.git ~/code/cortex
+bash ~/code/cortex/scripts/setup-machine.sh
 ```
 
-It runs `make install`, then asks for this machine's synced-vault path and your API key and writes the config (`brainVaultPath = <vault>/oflow`, `brainReadRoot = <vault>`, `brainGit = false`). Then sync that vault folder:
+It runs `make install`, then asks for this machine's synced-vault path and your API key and writes the config (`brainVaultPath = <vault>/cortex`, `brainReadRoot = <vault>`, `brainGit = false`). Then sync that vault folder:
 
 - **Obsidian Sync** — open the vault in Obsidian, enable Sync, and autostart Obsidian (continuous while it runs).
 - **Syncthing / cloud drive / git remote** — share the vault folder between machines.
 
-Two devices point oflow at their *own* local copy of the same synced vault — captures made anywhere show up everywhere.
+Two devices point cortex at their *own* local copy of the same synced vault — captures made anywhere show up everywhere.
 
 ## Tech Stack
 
@@ -204,7 +204,7 @@ Two devices point oflow at their *own* local copy of the same synced vault — c
 
 ## For LLMs / AI coding agents
 
-If you're an AI agent installing oflow on an Arch/Omarchy machine, just run the installer:
+If you're an AI agent installing cortex on an Arch/Omarchy machine, just run the installer:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/cryptob1/oflow/master/install.sh | bash
@@ -231,17 +231,17 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 
 ```bash
 git clone https://github.com/cryptob1/oflow.git
-cd oflow
+cd cortex
 make install  # Full install: build app, setup hotkey, Waybar & autostart
 ```
 
 This will:
 1. Build the Tauri app
-2. Install `oflow` and `oflow-ctl` to `~/.local/bin/`
+2. Install `cortex` and `cortex-ctl` to `~/.local/bin/`
 3. Configure **Copilot-key** push-to-talk hotkey
 4. Add Waybar status indicator with colored icons (green/red/yellow)
 5. Enable autostart on login
-6. Launch oflow
+6. Launch cortex
 
 ### Development Mode
 
@@ -259,7 +259,7 @@ make setup-backend
 
 # Start backend
 source .venv/bin/activate
-python oflow.py &
+python cortex.py &
 
 # Check it's running
 python test_system.py
@@ -275,29 +275,29 @@ python test_system.py
 | `make install-appimage` | Install AppImage to ~/.local/bin |
 | `make dev` | Run in development mode with hot reload |
 | `make run` | Start backend server only |
-| `make stop` | Stop all oflow processes |
-| `make uninstall` | Completely remove oflow (binaries, config, Waybar, hotkeys) |
+| `make stop` | Stop all cortex processes |
+| `make uninstall` | Completely remove cortex (binaries, config, Waybar, hotkeys) |
 
 ## Uninstall
 
-To completely remove oflow from your system:
+To completely remove cortex from your system:
 
 ```bash
-cd oflow
+cd cortex
 make uninstall
 ```
 
 This removes:
-- All binaries from `~/.local/bin/` (oflow, oflow-ctl, oflow-toggle)
+- All binaries from `~/.local/bin/` (cortex, cortex-ctl, cortex-toggle)
 - Waybar module and CSS styling
 - Hyprland hotkey binding (Copilot-key push-to-talk)
 - Autostart entry
-- Settings directory (`~/.oflow/`)
+- Settings directory (`~/.cortex/`)
 - Runtime files and sockets
 
 ## Waybar Integration
 
-oflow displays a clickable microphone icon in the center of Waybar (next to the clock):
+cortex displays a clickable microphone icon in the center of Waybar (next to the clock):
 - `󰍬` idle (green) — click to open settings
 - `󰍮` recording (red) — actively listening
 - `󰦖` transcribing (yellow) — processing audio
@@ -307,7 +307,7 @@ The icon, position, and CSS styling are automatically configured during `make in
 
 ## Configuration
 
-Settings are stored in `~/.oflow/settings.json`:
+Settings are stored in `~/.cortex/settings.json`:
 
 ```json
 {
@@ -319,24 +319,24 @@ Settings are stored in `~/.oflow/settings.json`:
   "audioFeedbackVolume": 0.3,         // 0.0 to 1.0
   "iconTheme": "nerd-font",           // "nerd-font", "emoji", "minimal", "text"
   "enableSpokenPunctuation": false,   // Say "period" → "."
-  "wordReplacements": {},             // Custom word corrections {"oflow": "Oflow"}
+  "wordReplacements": {},             // Custom word corrections {"cortex": "Cortex"}
 
   // Second brain (Settings → Second Brain)
-  "brainVaultPath": "~/brain",        // Where oflow WRITES captures (e.g. "<vault>/oflow")
+  "brainVaultPath": "~/brain",        // Where cortex WRITES captures (e.g. "<vault>/cortex")
   "brainReadRoot": "",                // Where Ask/initiatives READ (whole vault); "" = brainVaultPath
   "brainGit": false                   // Git-commit each capture; leave off when a sync tool handles history
 }
 ```
 
-A few behaviors are tuned with environment variables (e.g. in `~/.oflow/.env`):
+A few behaviors are tuned with environment variables (e.g. in `~/.cortex/.env`):
 
 ```bash
-OFLOW_BRAIN_DIR=~/brain                 # overrides brainVaultPath (write root)
-OFLOW_BRAIN_READ_DIR=~/Documents/work   # overrides brainReadRoot (search whole vault)
-OFLOW_LINK_THRESHOLD=0.45               # embedding recall for initiative auto-linking (LLM verifies)
-OFLOW_MAX_TRANSCRIBE_CONCURRENCY=12     # cap parallel chunk requests (long meetings)
-OFLOW_MIC_WARMUP_MS=250                 # on-demand mic warm-up before capture
-OFLOW_PERSISTENT_MIC=false              # keep the mic stream warm across dictations
+CORTEX_BRAIN_DIR=~/brain                 # overrides brainVaultPath (write root)
+CORTEX_BRAIN_READ_DIR=~/Documents/work   # overrides brainReadRoot (search whole vault)
+CORTEX_LINK_THRESHOLD=0.45               # embedding recall for initiative auto-linking (LLM verifies)
+CORTEX_MAX_TRANSCRIBE_CONCURRENCY=12     # cap parallel chunk requests (long meetings)
+CORTEX_MIC_WARMUP_MS=250                 # on-demand mic warm-up before capture
+CORTEX_PERSISTENT_MIC=false              # keep the mic stream warm across dictations
 ```
 
 ## Hotkey Configuration
@@ -351,21 +351,21 @@ The hotkey is configured automatically during `make install` in `~/.config/hypr/
 
 ```ini
 unbind = SUPER SHIFT, code:201
-bindd = SUPER SHIFT, code:201, Oflow dictation (hold to talk), exec, ~/.local/bin/oflow-ctl start
-bindr = SUPER SHIFT, code:201, exec, ~/.local/bin/oflow-ctl stop
+bindd = SUPER SHIFT, code:201, Cortex dictation (hold to talk), exec, ~/.local/bin/cortex-ctl start
+bindr = SUPER SHIFT, code:201, exec, ~/.local/bin/cortex-ctl stop
 # Second-brain capture (Copilot holds Super+Shift, so these are Copilot+N / Copilot+M):
 unbind = SUPER SHIFT, N
-bind = SUPER SHIFT, N, exec, ~/.local/bin/oflow-ctl note      # toggle a hands-free note
+bind = SUPER SHIFT, N, exec, ~/.local/bin/cortex-ctl note      # toggle a hands-free note
 unbind = SUPER SHIFT, M
-bind = SUPER SHIFT, M, exec, ~/.local/bin/oflow-ctl meeting   # toggle a meeting recording
+bind = SUPER SHIFT, M, exec, ~/.local/bin/cortex-ctl meeting   # toggle a meeting recording
 ```
 
-> oflow regenerates this block on start, so the note/meeting binds are added automatically for the Copilot hotkey — no manual editing needed.
+> cortex regenerates this block on start, so the note/meeting binds are added automatically for the Copilot hotkey — no manual editing needed.
 
 On a keyboard without a Copilot key, override the hotkey at install time:
 
 ```bash
-make setup-hotkey OFLOW_HOTKEY=", F8" OFLOW_HOTKEY_UNBIND= OFLOW_HOTKEY_LABEL=F8
+make setup-hotkey CORTEX_HOTKEY=", F8" CORTEX_HOTKEY_UNBIND= CORTEX_HOTKEY_LABEL=F8
 ```
 
 ### Alternative: Toggle Mode
@@ -373,7 +373,7 @@ make setup-hotkey OFLOW_HOTKEY=", F8" OFLOW_HOTKEY_UNBIND= OFLOW_HOTKEY_LABEL=F8
 If you prefer press-to-start / press-to-stop instead of hold, use a single bind:
 
 ```ini
-bind = SUPER, D, exec, ~/.local/bin/oflow-ctl toggle
+bind = SUPER, D, exec, ~/.local/bin/cortex-ctl toggle
 ```
 
 Then reload: `hyprctl reload`
@@ -388,8 +388,8 @@ Edit `~/.config/hypr/bindings.conf`, change `SUPER, D` to your preferred key (e.
 Audio Recording → Validation → Whisper STT → LLM Cleanup → one-shot paste (ydotool)
 ```
 
-- **Backend** (`oflow.py`) — Single Python file (~1200 lines) handling audio capture, transcription, and text output
-- **Frontend** (`oflow-ui/`) — Tauri v2 app (Rust + React) for settings UI and system tray
+- **Backend** (`cortex.py`) — Single Python file (~1200 lines) handling audio capture, transcription, and text output
+- **Frontend** (`cortex-ui/`) — Tauri v2 app (Rust + React) for settings UI and system tray
 - **IPC** — Unix socket at `/tmp/voice-dictation.sock` for start/stop/toggle commands
 
 ## Troubleshooting
@@ -406,18 +406,18 @@ hyprctl reload
 
 **Backend not responding?**
 ```bash
-rm -f /tmp/oflow.pid /tmp/voice-dictation.sock
-~/.local/bin/oflow-toggle
+rm -f /tmp/cortex.pid /tmp/voice-dictation.sock
+~/.local/bin/cortex-toggle
 ```
 
 **Check if binding is configured:**
 ```bash
-grep oflow ~/.config/hypr/bindings.conf
+grep cortex ~/.config/hypr/bindings.conf
 ```
 
 **Enable debug logging:**
 ```bash
-DEBUG_MODE=true python oflow.py
+DEBUG_MODE=true python cortex.py
 ```
 
 ## License

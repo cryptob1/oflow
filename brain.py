@@ -1,4 +1,4 @@
-"""oflow brain — persist captured notes (and later meetings) to a git-backed
+"""cortex brain — persist captured notes (and later meetings) to a git-backed
 Markdown vault.
 
 The vault is a plain folder of Markdown files, Obsidian-compatible: notes append
@@ -7,10 +7,10 @@ best-effort ``git add``/``commit`` so the vault is versioned and syncable across
 machines. Both git and Obsidian are optional — a write is just filesystem I/O and
 must never be lost because the vault isn't a repo or a commit fails.
 
-Config (env, loadable via oflow's .env):
-  OFLOW_BRAIN_DIR       vault root (default ~/brain)
-  OFLOW_BRAIN_GIT       auto-commit each capture when the vault is a repo (default true)
-  OFLOW_BRAIN_GIT_PUSH  also push after committing (default false)
+Config (env, loadable via cortex's .env):
+  CORTEX_BRAIN_DIR       vault root (default ~/brain)
+  CORTEX_BRAIN_GIT       auto-commit each capture when the vault is a repo (default true)
+  CORTEX_BRAIN_GIT_PUSH  also push after committing (default false)
 """
 
 from __future__ import annotations
@@ -25,10 +25,10 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-SETTINGS_FILE = Path.home() / ".oflow" / "settings.json"
+SETTINGS_FILE = Path.home() / ".cortex" / "settings.json"
 
 # Config is read lazily (per call) so it reflects both env (advanced overrides,
-# loaded via oflow's .env after this module is imported) and settings.json (what
+# loaded via cortex's .env after this module is imported) and settings.json (what
 # the UI writes). Precedence: env var > settings.json > built-in default.
 
 
@@ -41,32 +41,32 @@ def _settings() -> dict:
 
 def _vault() -> Path:
     """Vault root — a folder of Markdown files. Point Obsidian at it; `git init` for sync."""
-    env = os.environ.get("OFLOW_BRAIN_DIR")
+    env = os.environ.get("CORTEX_BRAIN_DIR")
     path = env or _settings().get("brainVaultPath") or str(Path.home() / "brain")
     return Path(path).expanduser()
 
 
 def _read_root() -> Path:
-    """Where to READ/search from — can be a whole Obsidian vault. oflow WRITES
-    captures under _vault() (e.g. <vault>/oflow), but Ask, initiative status, and
+    """Where to READ/search from — can be a whole Obsidian vault. cortex WRITES
+    captures under _vault() (e.g. <vault>/cortex), but Ask, initiative status, and
     dreams can search a broader root (the parent vault) so your existing notes are
     included. Defaults to the write vault. Read-only: existing notes are never
-    modified. Set via OFLOW_BRAIN_READ_DIR or settings `brainReadRoot`."""
-    env = os.environ.get("OFLOW_BRAIN_READ_DIR")
+    modified. Set via CORTEX_BRAIN_READ_DIR or settings `brainReadRoot`."""
+    env = os.environ.get("CORTEX_BRAIN_READ_DIR")
     root = env or _settings().get("brainReadRoot")
     return Path(root).expanduser() if root else _vault()
 
 
 def _git_enabled() -> bool:
     """Auto-commit each capture when the vault is a git repo. Push is opt-in."""
-    env = os.environ.get("OFLOW_BRAIN_GIT")
+    env = os.environ.get("CORTEX_BRAIN_GIT")
     if env is not None:
         return env.lower() == "true"
     return bool(_settings().get("brainGit", True))
 
 
 def _git_push_enabled() -> bool:
-    env = os.environ.get("OFLOW_BRAIN_GIT_PUSH")
+    env = os.environ.get("CORTEX_BRAIN_GIT_PUSH")
     if env is not None:
         return env.lower() == "true"
     return bool(_settings().get("brainGitPush", False))
@@ -142,7 +142,7 @@ def write_item(
     tags: list[str] | None = None,
     links: list[str] | None = None,
     extra: dict | None = None,
-    source: str = "oflow",
+    source: str = "cortex",
     timestamp: datetime | None = None,
     item_id: str | None = None,
 ) -> Path:
@@ -208,7 +208,7 @@ def add_note(text: str, timestamp: datetime | None = None) -> Path:
     title = _title_from_text(text)
     return write_item(
         "note", "notes", _slugify(title), title=title,
-        body=text.strip() + "\n", source="oflow-note", timestamp=ts,
+        body=text.strip() + "\n", source="cortex-note", timestamp=ts,
     )
 
 
@@ -257,7 +257,7 @@ def add_initiative(name: str, goals: list[str], note: str = "",
         body += f"\n### {ts:%Y-%m-%d %H:%M} — created\n{note.strip()}\n"
     return write_item(
         "initiative", "initiatives", _slugify(name),
-        title=name, body=body, source="oflow-note", timestamp=ts,
+        title=name, body=body, source="cortex-note", timestamp=ts,
         extra={"status": "active", "goals": goals},
     )
 
@@ -274,7 +274,7 @@ def add_reminder(task: str, due: str = "", note: str = "",
         body += f"\n{note.strip()}\n"
     return write_item(
         "reminder", "reminders", _slugify(task), title=task, body=body,
-        source="oflow-note", timestamp=ts, extra={"due": due, "status": "pending"},
+        source="cortex-note", timestamp=ts, extra={"due": due, "status": "pending"},
     )
 
 
@@ -332,7 +332,7 @@ def add_journal(date_str: str, content: str, timestamp: datetime | None = None) 
     d.mkdir(parents=True, exist_ok=True)
     f = d / f"{date_str}.md"
     fields = {"id": new_id(ts), "type": "journal", "created": ts.isoformat(),
-              "source": "oflow-journal", "title": f"Journal — {date_str}"}
+              "source": "cortex-journal", "title": f"Journal — {date_str}"}
     f.write_text(_yaml_frontmatter(fields) + "\n" + content.strip() + "\n")
     _commit(vault, f, f"journal: {date_str}")
     logger.info(f"Journal saved to {f}")
@@ -349,5 +349,5 @@ def add_meeting(transcript: str, summary: str, timestamp: datetime | None = None
     body += f"## Transcript\n\n{transcript.strip()}\n"
     return write_item(
         "meeting", "meetings", f"{ts:%Y-%m-%d-%H%M}",
-        title=title, body=body, source="oflow-meeting", timestamp=ts,
+        title=title, body=body, source="cortex-meeting", timestamp=ts,
     )

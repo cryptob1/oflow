@@ -2,5 +2,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-  oflow_ui_lib::run();
+  cortex_ui_lib::run();
 }

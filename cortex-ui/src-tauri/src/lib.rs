@@ -19,7 +19,7 @@ use tauri_plugin_shell::ShellExt;
 const DEFAULT_SHORTCUT: &str = "XF86Assistant";
 
 /// Settings file path relative to home directory
-const SETTINGS_PATH: &str = ".oflow/settings.json";
+const SETTINGS_PATH: &str = ".cortex/settings.json";
 
 /// State to track recording status and current shortcut.
 struct AppState {
@@ -64,16 +64,16 @@ fn read_settings() -> Settings {
         // NB: never log `contents` — settings.json holds API keys.
         match serde_json::from_str::<Settings>(&contents) {
             Ok(s) => {
-                eprintln!("[oflow] Parsed shortcut: {:?}", s.shortcut);
+                eprintln!("[cortex] Parsed shortcut: {:?}", s.shortcut);
                 s
             }
             Err(e) => {
-                eprintln!("[oflow] Failed to parse settings: {}", e);
+                eprintln!("[cortex] Failed to parse settings: {}", e);
                 Settings::default()
             }
         }
     } else {
-        eprintln!("[oflow] Could not read settings file");
+        eprintln!("[cortex] Could not read settings file");
         Settings::default()
     }
 }
@@ -116,9 +116,9 @@ fn expand_tilde(p: &str) -> std::path::PathBuf {
 }
 
 /// Resolve the brain vault dir the same way brain.py does:
-/// env OFLOW_BRAIN_DIR > settings.json brainVaultPath > ~/brain.
+/// env CORTEX_BRAIN_DIR > settings.json brainVaultPath > ~/brain.
 fn vault_dir() -> std::path::PathBuf {
-    if let Ok(env) = std::env::var("OFLOW_BRAIN_DIR") {
+    if let Ok(env) = std::env::var("CORTEX_BRAIN_DIR") {
         if !env.is_empty() {
             return expand_tilde(&env);
         }
@@ -190,7 +190,7 @@ async fn ask_brain(query: String) -> Result<AskResult, String> {
         return Err("empty query".to_string());
     }
     let home = dirs::home_dir().ok_or("Could not find home directory")?;
-    let launcher = home.join(".local/bin/oflow-brain");
+    let launcher = home.join(".local/bin/cortex-brain");
     let out = std::process::Command::new(&launcher)
         .arg("--json")
         .arg(&query)
@@ -215,7 +215,7 @@ async fn ask_brain(query: String) -> Result<AskResult, String> {
 /// Run the brain CLI with --json and return the last JSON line (object or array).
 fn run_brain_json(args: &[&str]) -> Result<String, String> {
     let home = dirs::home_dir().ok_or("Could not find home directory")?;
-    let mut cmd = std::process::Command::new(home.join(".local/bin/oflow-brain"));
+    let mut cmd = std::process::Command::new(home.join(".local/bin/cortex-brain"));
     cmd.arg("--json");
     for a in args {
         cmd.arg(a);
@@ -396,7 +396,7 @@ async fn get_shortcut(
     state: State<'_, Arc<Mutex<AppState>>>,
 ) -> Result<String, String> {
     let app_state = state.lock().await;
-    eprintln!("[oflow] get_shortcut called, returning: {}", app_state.current_shortcut);
+    eprintln!("[cortex] get_shortcut called, returning: {}", app_state.current_shortcut);
     Ok(app_state.current_shortcut.clone())
 }
 
@@ -407,10 +407,10 @@ async fn set_shortcut(
     state: State<'_, Arc<Mutex<AppState>>>,
     shortcut: String,
 ) -> Result<(), String> {
-    eprintln!("[oflow] set_shortcut called with: {}", shortcut);
+    eprintln!("[cortex] set_shortcut called with: {}", shortcut);
 
     let home = dirs::home_dir().ok_or("Could not find home directory")?;
-    eprintln!("[oflow] home dir: {:?}", home);
+    eprintln!("[cortex] home dir: {:?}", home);
     let bindings_file = home.join(".config/hypr/bindings.conf");
 
     if !bindings_file.exists() {
@@ -421,15 +421,15 @@ async fn set_shortcut(
     let contents = std::fs::read_to_string(&bindings_file)
         .map_err(|e| format!("Failed to read bindings file: {}", e))?;
 
-    // Remove old oflow bindings — match every line the oflow block emits: its
+    // Remove old cortex bindings — match every line the cortex block emits: its
     // comment(s), the start/stop bind(d)/bindr lines, and the note/meeting
-    // bind/unbind lines (all invoke oflow-ctl; older builds used oflow.py).
+    // bind/unbind lines (all invoke cortex-ctl; older builds used cortex.py).
     let new_lines: Vec<&str> = contents
         .lines()
         .filter(|line| {
-            !line.contains("# Oflow voice dictation")
-                && !line.contains("oflow-ctl")
-                && !line.contains("oflow.py")
+            !line.contains("# Cortex voice dictation")
+                && !line.contains("cortex-ctl")
+                && !line.contains("cortex.py")
                 && !line.contains("SUPER SHIFT, N")
                 && !line.contains("SUPER SHIFT, M")
         })
@@ -447,17 +447,17 @@ async fn set_shortcut(
             .replace("Alt+", "ALT ")
     };
 
-    // Add new bindings using oflow-ctl helper script. Note & meeting capture ride
+    // Add new bindings using cortex-ctl helper script. Note & meeting capture ride
     // on the Copilot key (which holds Super+Shift), so include them when binding
-    // that key — mirrors scripts/oflow-hotkey so the two generators stay in sync.
+    // that key — mirrors scripts/cortex-hotkey so the two generators stay in sync.
     let is_copilot = shortcut.starts_with("XF86") || shortcut.contains("F23");
     let brain_binds = if is_copilot {
-        "\nunbind = SUPER SHIFT, N\nbind = SUPER SHIFT, N, exec, oflow-ctl note\nunbind = SUPER SHIFT, M\nbind = SUPER SHIFT, M, exec, oflow-ctl meeting"
+        "\nunbind = SUPER SHIFT, N\nbind = SUPER SHIFT, N, exec, cortex-ctl note\nunbind = SUPER SHIFT, M\nbind = SUPER SHIFT, M, exec, cortex-ctl meeting"
     } else {
         ""
     };
     let new_bindings = format!(
-        "\n# Oflow voice dictation (push-to-talk: hold {} to record, release to stop)\nbind = {}, exec, oflow-ctl start\nbindr = {}, exec, oflow-ctl stop{}",
+        "\n# Cortex voice dictation (push-to-talk: hold {} to record, release to stop)\nbind = {}, exec, cortex-ctl start\nbindr = {}, exec, cortex-ctl stop{}",
         shortcut,
         hypr_shortcut,
         hypr_shortcut,
@@ -472,16 +472,16 @@ async fn set_shortcut(
     final_content.push_str(&new_bindings);
     final_content.push('\n');
 
-    eprintln!("[oflow] Writing to: {:?}", bindings_file);
+    eprintln!("[cortex] Writing to: {:?}", bindings_file);
     std::fs::write(&bindings_file, &final_content)
         .map_err(|e| format!("Failed to write bindings file: {}", e))?;
-    eprintln!("[oflow] Write successful");
+    eprintln!("[cortex] Write successful");
 
-    eprintln!("[oflow] Reloading Hyprland");
+    eprintln!("[cortex] Reloading Hyprland");
     let reload_result = std::process::Command::new("hyprctl")
         .arg("reload")
         .output();
-    eprintln!("[oflow] Hyprctl result: {:?}", reload_result);
+    eprintln!("[cortex] Hyprctl result: {:?}", reload_result);
 
     let mut app_state = state.lock().await;
     app_state.current_shortcut = shortcut.clone();
@@ -490,7 +490,7 @@ async fn set_shortcut(
     settings.shortcut = Some(shortcut.clone());
     write_settings(&settings)?;
 
-    eprintln!("[oflow] Shortcut successfully updated to: {}", shortcut);
+    eprintln!("[cortex] Shortcut successfully updated to: {}", shortcut);
     Ok(())
 }
 
@@ -505,13 +505,13 @@ async fn check_backend_status() -> Result<bool, String> {
 }
 
 fn start_development_backend() {
-    let oflow_dir = std::env::var("OFLOW_DIR")
+    let cortex_dir = std::env::var("CORTEX_DIR")
         .unwrap_or_else(|_| dirs::home_dir()
-            .map(|h| h.join("code/oflow").to_string_lossy().to_string())
+            .map(|h| h.join("code/cortex").to_string_lossy().to_string())
             .unwrap_or_default());
     
-    let python_path = format!("{oflow_dir}/.venv/bin/python");
-    let script_path = format!("{oflow_dir}/oflow.py");
+    let python_path = format!("{cortex_dir}/.venv/bin/python");
+    let script_path = format!("{cortex_dir}/cortex.py");
     
     if std::path::Path::new(&python_path).exists() && std::path::Path::new(&script_path).exists() {
         log::info!("Starting development backend from {}", script_path);
@@ -528,7 +528,7 @@ fn start_development_backend() {
 }
 
 fn start_sidecar_backend(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
-    let sidecar = app.shell().sidecar("oflow-backend")?;
+    let sidecar = app.shell().sidecar("cortex-backend")?;
     let (mut rx, _child) = sidecar.spawn()?;
     
     tauri::async_runtime::spawn(async move {
@@ -590,7 +590,7 @@ fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
         .build()?;
 
     TrayIconBuilder::new()
-        .tooltip("oflow - Voice Dictation")
+        .tooltip("cortex - Voice Dictation")
         .icon(
             app.default_window_icon()
                 .ok_or("Failed to get default icon")?
@@ -749,7 +749,7 @@ pub fn run() {
 
             // Start hidden when launched with --hidden (e.g. from autostart):
             // the app lives in the system tray and is shown on demand. Without
-            // the flag (e.g. user launches oflow manually) show + focus it.
+            // the flag (e.g. user launches cortex manually) show + focus it.
             let start_hidden = std::env::args().any(|a| a == "--hidden");
             if start_hidden {
                 let _ = window.hide();

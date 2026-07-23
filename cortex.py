@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Oflow - Voice dictation for Hyprland/Wayland.
+Cortex - Voice dictation for Hyprland/Wayland.
 
 Records audio via global hotkey (Super+D toggle mode), transcribes using
 Groq Whisper (or OpenAI), optionally cleans with Llama 3.1 (or GPT-4o-mini),
@@ -56,7 +56,7 @@ try:
 except ImportError:
     _HAS_PSUTIL = False
 
-# Second-brain sink for "note" captures (alongside oflow.py). Optional: if it's
+# Second-brain sink for "note" captures (alongside cortex.py). Optional: if it's
 # missing (e.g. a partial install), note mode degrades to a logged error rather
 # than crashing dictation.
 try:
@@ -73,8 +73,8 @@ _debug_mode = os.getenv("DEBUG_MODE", "false").lower() == "true"
 # Persist logs to a rotating file (in addition to stderr/journal) so that
 # intermittent failures — a mic that drops out, a flaky STT request — can be
 # diagnosed after the fact instead of vanishing with the journal buffer.
-_LOG_DIR = Path(os.environ.get("XDG_STATE_HOME", Path.home() / ".local" / "state")) / "oflow"
-LOG_FILE = _LOG_DIR / "oflow.log"
+_LOG_DIR = Path(os.environ.get("XDG_STATE_HOME", Path.home() / ".local" / "state")) / "cortex"
+LOG_FILE = _LOG_DIR / "cortex.log"
 _log_handlers: list[logging.Handler] = [logging.StreamHandler()]
 try:
     from logging.handlers import RotatingFileHandler
@@ -102,7 +102,7 @@ logger = logging.getLogger(__name__)
 SOCKET_PATH = "/tmp/voice-dictation.sock"
 
 # PID file to ensure only one backend runs at a time
-PID_FILE = "/tmp/oflow.pid"
+PID_FILE = "/tmp/cortex.pid"
 
 # Audio configuration
 SAMPLE_RATE = 16000  # 16kHz sample rate (Whisper requirement)
@@ -113,17 +113,17 @@ MIN_AUDIO_DURATION_SECONDS = 0.5  # Minimum recording duration
 # and *whispered* dictation isn't dropped before it reaches the STT model —
 # normalization (below) boosts a quiet-but-real clip up to NORMALIZATION_TARGET
 # afterwards, so this only needs to clear true silence/noise, not be loud.
-# Override with OFLOW_MIN_AMPLITUDE if your environment is noisier.
-MIN_AUDIO_AMPLITUDE = float(os.getenv("OFLOW_MIN_AMPLITUDE", "0.006"))
+# Override with CORTEX_MIN_AMPLITUDE if your environment is noisier.
+MIN_AUDIO_AMPLITUDE = float(os.getenv("CORTEX_MIN_AMPLITUDE", "0.006"))
 # Speech-presence gate: the loudest 100ms frame must have at least this RMS
 # energy, else the clip is treated as no-speech and never sent to the STT model.
 # Unlike peak amplitude (which a single click trips), frame RMS reliably tells
 # sustained speech from a noise floor — the fix for mics whose steady background
 # noise sits at speech level and makes Whisper hallucinate ("Okay.", "Thank
 # you."). 0 disables it (default) since the right value is mic/room specific;
-# set OFLOW_MIN_SPEECH_RMS just above your measured silence floor. The per-clip
+# set CORTEX_MIN_SPEECH_RMS just above your measured silence floor. The per-clip
 # value is logged ("Audio level: …") so it can be calibrated from real usage.
-MIN_SPEECH_RMS = float(os.getenv("OFLOW_MIN_SPEECH_RMS", "0"))
+MIN_SPEECH_RMS = float(os.getenv("CORTEX_MIN_SPEECH_RMS", "0"))
 # Raw mic peak above which we trust a short transcription even if it matches a
 # stock hallucination phrase ("thank you", "subscribe"). Silence-hallucinations
 # come from near-silent clips; a loud, clear clip saying "thank you" is real.
@@ -136,16 +136,16 @@ AUDIO_BLOCKSIZE = 1600  # 100ms chunks → 10 callbacks/sec (3000-chunk queue = 
 # little start latency / pre-roll for zero idle cost. The old always-open stream
 # removed the per-record PortAudio open latency, but a persistent stream turns
 # into a CPU-spinning zombie after a suspend/resume (PortAudio never resumes it),
-# and on-demand feels indistinguishable in practice. Set OFLOW_PERSISTENT_MIC=true
+# and on-demand feels indistinguishable in practice. Set CORTEX_PERSISTENT_MIC=true
 # to keep the stream warm across dictations.
 # NOTE: persistent mode is additionally auto-disabled when the default source is
 # a Bluetooth device (see _persistent_mic_wanted) — holding a BT mic open forces
 # the headset from high-quality A2DP to the low-quality HFP/HSP profile.
-PERSISTENT_MIC = os.getenv("OFLOW_PERSISTENT_MIC", "false").lower() == "true"
+PERSISTENT_MIC = os.getenv("CORTEX_PERSISTENT_MIC", "false").lower() == "true"
 # Rolling audio retained *before* the hotkey press, so speech that starts as
 # your finger comes down on the key isn't clipped. Only effective with a
 # persistent stream (otherwise the stream isn't open yet to fill it).
-PREROLL_SECONDS = float(os.getenv("OFLOW_PREROLL_SECONDS", "0.5"))
+PREROLL_SECONDS = float(os.getenv("CORTEX_PREROLL_SECONDS", "0.5"))
 PREROLL_CHUNKS = max(1, round(PREROLL_SECONDS * SAMPLE_RATE / AUDIO_BLOCKSIZE))
 # A healthy stream fires the audio callback every ~100ms (AUDIO_BLOCKSIZE). If a
 # persistent stream goes this long with no callback it's a zombie (e.g. never
@@ -162,30 +162,30 @@ STREAM_WARN_INTERVAL_SECONDS = 5.0  # Throttle audio-stream distress warnings
 # budget — for the first real callback before cueing the user and arming capture,
 # so their opening words land in the (now-filling) pre-roll instead of the gap.
 # A persistent stream is already warm, so this wait is skipped there.
-MIC_WARMUP_SECONDS = float(os.getenv("OFLOW_MIC_WARMUP_MS", "250")) / 1000.0
+MIC_WARMUP_SECONDS = float(os.getenv("CORTEX_MIC_WARMUP_MS", "250")) / 1000.0
 
 # API configuration
 API_TIMEOUT_SECONDS = 30.0  # Timeout for API requests
 # Max chunk-transcription requests in flight at once. Long meetings split into
 # dozens of chunks; providers cap concurrency (ElevenLabs Scribe = 20), so keep
-# under that to avoid 429s. Override via OFLOW_MAX_TRANSCRIBE_CONCURRENCY.
-MAX_TRANSCRIBE_CONCURRENCY = int(os.getenv("OFLOW_MAX_TRANSCRIBE_CONCURRENCY", "12"))
+# under that to avoid 429s. Override via CORTEX_MAX_TRANSCRIBE_CONCURRENCY.
+MAX_TRANSCRIBE_CONCURRENCY = int(os.getenv("CORTEX_MAX_TRANSCRIBE_CONCURRENCY", "12"))
 # How often the backend checks the vault for due reminders to fire.
-REMINDER_POLL_SECONDS = int(os.getenv("OFLOW_REMINDER_POLL_SECONDS", "30"))
+REMINDER_POLL_SECONDS = int(os.getenv("CORTEX_REMINDER_POLL_SECONDS", "30"))
 # How long an idle keep-alive socket may be reused before it's recycled. Kept
 # below typical server/NAT idle timeouts so we don't try to send on a socket the
 # other end has already dropped (e.g. after laptop suspend/resume).
 KEEPALIVE_EXPIRY_SECONDS = 45.0
 
 # File paths
-TRANSCRIPTS_FILE = Path.home() / ".oflow" / "transcripts.jsonl"
-SETTINGS_FILE = Path.home() / ".oflow" / "settings.json"
+TRANSCRIPTS_FILE = Path.home() / ".cortex" / "transcripts.jsonl"
+SETTINGS_FILE = Path.home() / ".cortex" / "settings.json"
 
 # Waybar state file (in XDG_RUNTIME_DIR for fast access)
-RUNTIME_DIR = Path(os.environ.get("XDG_RUNTIME_DIR", "/tmp")) / "oflow"
+RUNTIME_DIR = Path(os.environ.get("XDG_RUNTIME_DIR", "/tmp")) / "cortex"
 STATE_FILE = RUNTIME_DIR / "state"
 
-# On-screen recording overlay (oflow-osd.py): datagram socket for live levels
+# On-screen recording overlay (cortex-osd.py): datagram socket for live levels
 OSD_SOCK = RUNTIME_DIR / "osd.sock"
 OSD_LEVEL_GAIN = 6.0  # scale raw mic peak (~0..0.2 for speech) toward 0..1
 # gtk4-layer-shell must be LD_PRELOADed (linker-order quirk) for the overlay
@@ -214,8 +214,8 @@ WHISPER_PROMPT = (
 
 # Force a fixed transcription language so providers don't auto-switch mid-dictation.
 # STT_LANGUAGE is ISO-639-1 (Whisper/Deepgram); the ISO-639-3 form is for ElevenLabs.
-STT_LANGUAGE = os.getenv("OFLOW_LANGUAGE", "en")
-STT_LANGUAGE_ISO3 = os.getenv("OFLOW_LANGUAGE_ISO3", "eng")
+STT_LANGUAGE = os.getenv("CORTEX_LANGUAGE", "en")
+STT_LANGUAGE_ISO3 = os.getenv("CORTEX_LANGUAGE_ISO3", "eng")
 
 # API key validation constants
 GROQ_API_KEY_LENGTH = 56
@@ -246,7 +246,7 @@ DEFAULT_FAST_MODE_MAX_WORDS = 19
 
 
 def ensure_data_dir() -> None:
-    """Ensure ~/.oflow directory and default files exist."""
+    """Ensure ~/.cortex directory and default files exist."""
     SETTINGS_FILE.parent.mkdir(parents=True, exist_ok=True)
 
     # Create default settings file if it doesn't exist
@@ -266,7 +266,7 @@ def ensure_data_dir() -> None:
 
 def load_settings() -> dict:
     """
-    Load settings from ~/.oflow/settings.json.
+    Load settings from ~/.cortex/settings.json.
     Falls back to environment variable defaults if file doesn't exist.
     """
     ensure_data_dir()
@@ -342,11 +342,11 @@ def load_settings() -> dict:
     }
 
 
-HOTKEY_SCRIPT = Path.home() / ".local" / "bin" / "oflow-hotkey"
+HOTKEY_SCRIPT = Path.home() / ".local" / "bin" / "cortex-hotkey"
 
 
 def apply_dictation_hotkey(choice: str) -> None:
-    """Bind the push-to-talk hotkey via the oflow-hotkey helper (Hyprland).
+    """Bind the push-to-talk hotkey via the cortex-hotkey helper (Hyprland).
 
     Best-effort: no-op if the helper or Hyprland isn't present, so this is safe
     on non-Hyprland setups.
@@ -421,13 +421,13 @@ def release_pid_lock() -> None:
 # ============================================================================
 
 
-class OflowError(Exception):
-    """Base exception for Oflow errors."""
+class CortexError(Exception):
+    """Base exception for Cortex errors."""
 
     pass
 
 
-class ConfigurationError(OflowError):
+class ConfigurationError(CortexError):
     """Raised when configuration is invalid."""
 
     pass
@@ -441,7 +441,7 @@ class ConfigurationError(OflowError):
 class WaybarState:
     """
     Manages Waybar status bar integration.
-    Writes state to a file that Waybar can read via custom/oflow module.
+    Writes state to a file that Waybar can read via custom/cortex module.
     """
 
     ICON_THEMES = {
@@ -467,7 +467,7 @@ class WaybarState:
         data = {
             "text": icon,
             "alt": state,
-            "tooltip": tooltip or f"oflow: {state}",
+            "tooltip": tooltip or f"cortex: {state}",
             "class": state,
         }
         try:
@@ -477,7 +477,7 @@ class WaybarState:
             logger.debug(f"Failed to write waybar state: {e}")
 
     def idle(self):
-        self.set_state("idle", "oflow ready")
+        self.set_state("idle", "cortex ready")
 
     def recording(self):
         self.set_state("recording", "Recording...")
@@ -1165,7 +1165,7 @@ STT_PROVIDERS: dict[str, STTProvider] = {
     "groq": STTProvider(
         name="groq", label="Groq Whisper",
         url=GROQ_WHISPER_URL, default_model="whisper-large-v3",
-        model_env="OFLOW_WHISPER_MODEL",
+        model_env="CORTEX_WHISPER_MODEL",
         settings_key="groqApiKey", env_key="GROQ_API_KEY",
         signup_url="https://console.groq.com/keys",
         warm_url="https://api.groq.com/openai/v1/models",
@@ -1178,7 +1178,7 @@ STT_PROVIDERS: dict[str, STTProvider] = {
     "openai": STTProvider(
         name="openai", label="OpenAI Whisper",
         url=OPENAI_WHISPER_URL, default_model="whisper-1",
-        model_env="OFLOW_OPENAI_STT_MODEL",
+        model_env="CORTEX_OPENAI_STT_MODEL",
         settings_key="openaiApiKey", env_key="OPENAI_API_KEY",
         signup_url="https://platform.openai.com/api-keys",
         warm_url="https://api.openai.com/v1/models",
@@ -1191,7 +1191,7 @@ STT_PROVIDERS: dict[str, STTProvider] = {
     "elevenlabs": STTProvider(
         name="elevenlabs", label="ElevenLabs Scribe",
         url=ELEVENLABS_STT_URL, default_model="scribe_v1",
-        model_env="OFLOW_ELEVENLABS_MODEL",
+        model_env="CORTEX_ELEVENLABS_MODEL",
         settings_key="elevenlabsApiKey", env_key="ELEVENLABS_API_KEY",
         signup_url="https://elevenlabs.io/app/settings/api-keys",
         warm_url="https://api.elevenlabs.io/v1/models",
@@ -1203,7 +1203,7 @@ STT_PROVIDERS: dict[str, STTProvider] = {
     "deepgram": STTProvider(
         name="deepgram", label="Deepgram Nova-3",
         url=DEEPGRAM_STT_URL, default_model="nova-3",
-        model_env="OFLOW_DEEPGRAM_MODEL",
+        model_env="CORTEX_DEEPGRAM_MODEL",
         settings_key="deepgramApiKey", env_key="DEEPGRAM_API_KEY",
         signup_url="https://console.deepgram.com/",
         warm_url="https://api.deepgram.com/v1/auth/token",
@@ -1603,7 +1603,7 @@ def _tap(code: str) -> list[str]:
 def _chord(*codes: str) -> list[str]:
     return [f"{c}:1" for c in codes] + [f"{c}:0" for c in reversed(codes)]
 
-# Spoken commands that, when said at the very end of a dictation, make oflow
+# Spoken commands that, when said at the very end of a dictation, make cortex
 # press Enter after pasting (handy for submitting prompts/chats). The keyword
 # itself is stripped from the output. Configurable via the "submitKeywords"
 # setting. Defaults are distinctive imperative phrases — people don't naturally
@@ -1710,7 +1710,7 @@ def _notify(title: str, body: str = "") -> None:
     'silent', so a failed dictation isn't an invisible no-op."""
     try:
         subprocess.run(
-            ["notify-send", "-a", "oflow", "-u", "critical", title, body],
+            ["notify-send", "-a", "cortex", "-u", "critical", title, body],
             check=False, timeout=2, stderr=subprocess.DEVNULL,
         )
     except (FileNotFoundError, subprocess.SubprocessError, OSError):
@@ -1839,23 +1839,23 @@ def type_text(text: str) -> None:
 
 
 # ============================================================================
-# Spoken Actions (say the wake word + a command, oflow presses the real key)
+# Spoken Actions (say the wake word + a command, cortex presses the real key)
 # ============================================================================
 #
-# Every command is "<wake word> <command>" — e.g. "oflow enter", "oflow scratch
-# that", "oflow select all". Requiring the wake word is what makes this safe:
-# nobody says "oflow" mid-sentence, so a command only fires when you mean it, and
+# Every command is "<wake word> <command>" — e.g. "cortex enter", "cortex scratch
+# that", "cortex select all". Requiring the wake word is what makes this safe:
+# nobody says "cortex" mid-sentence, so a command only fires when you mean it, and
 # the command words are consumed (not typed). The wake word is fuzzy-matched
-# because Whisper renders the coined word "oflow" inconsistently, and it is
+# because Whisper renders the coined word "cortex" inconsistently, and it is
 # user-configurable (commandWakeWord).
 DEFAULT_WAKE_WORD = "jarvis"
 
 # Fuzzy variants for coined wake words Whisper renders inconsistently. Real
 # words and names (jarvis, computer) transcribe deterministically, so they're
-# matched literally; only words listed here get the variant treatment. "oflow"
+# matched literally; only words listed here get the variant treatment. "cortex"
 # scatters into "of flow / for flow / a flow", which is why it's not the default.
 _WAKE_VARIANTS = {
-    "oflow": ["oflow", "oflo", "o flow", "oh flow", "off flow"],
+    "cortex": ["cortex", "oflo", "o flow", "oh flow", "off flow"],
 }
 
 # Each action: "action" is "keys" (send chords) or "scratch" (delete last output).
@@ -1920,9 +1920,9 @@ def segment_spoken_actions(
     A command is "<wake> <phrase>"; everything else is literal text. Segments are
     ("text", str), ("key", keys, label), or ("scratch", label). Whitespace and a
     stray punctuation mark left flush against a removed command are trimmed so
-    "do it, oflow enter" yields [text "do it"] + [key Enter]. Returns a single
+    "do it, cortex enter" yields [text "do it"] + [key Enter]. Returns a single
     text segment when no command is present (the common case), so normal
-    dictation — including the literal word "oflow" — is untouched.
+    dictation — including the literal word "cortex" — is untouched.
     """
     pattern, group_to_spec = _compile_actions(specs, wake_word)
     if not text or pattern is None:
@@ -2110,7 +2110,7 @@ class VoiceDictationServer:
         self.waybar_state.idle()
 
         # Mic volume is boosted only *during* a recording and restored on stop
-        # (see _start_recording / _restore_mic_volume), so oflow never leaves the
+        # (see _start_recording / _restore_mic_volume), so cortex never leaves the
         # system mic altered for other apps like video calls. This holds the
         # level we must put back.
         self._saved_mic_volume: str | None = None
@@ -2146,7 +2146,7 @@ class VoiceDictationServer:
         settings = load_settings()
         provider = settings.get("provider", "groq")
         cfg = get_stt_provider(provider)
-        logger.info(f"oflow Ready ({cfg.label})")
+        logger.info(f"cortex Ready ({cfg.label})")
         self._schedule_on_loop(self._prewarm_connection())
         if not cfg.supports_cleanup:
             cu_provider, _ = resolve_cleanup_provider(settings, provider, get_provider_key(settings, provider))
@@ -2181,7 +2181,7 @@ class VoiceDictationServer:
         # Fire desktop notifications for due reminders (Copilot+N "remind me to…").
         if _HAS_BRAIN:
             threading.Thread(target=self._reminder_watch_loop, daemon=True,
-                             name="oflow-reminders").start()
+                             name="cortex-reminders").start()
 
     def _reminder_watch_loop(self):
         """Poll the vault for due reminders and fire a notification for each."""
@@ -2202,7 +2202,7 @@ class VoiceDictationServer:
     def _start_hotkey_watcher(self):
         """Apply the configured hotkey now, then watch settings.json for changes."""
         self._sync_hotkey()
-        threading.Thread(target=self._hotkey_watch_loop, daemon=True, name="oflow-hotkey").start()
+        threading.Thread(target=self._hotkey_watch_loop, daemon=True, name="cortex-hotkey").start()
 
     def _sync_hotkey(self):
         """Apply the hotkey if the setting differs from what's currently bound."""
@@ -2228,7 +2228,7 @@ class VoiceDictationServer:
         """Spin up the persistent event loop (background thread) + HTTP client."""
         self._loop = asyncio.new_event_loop()
         self._loop_thread = threading.Thread(
-            target=self._loop.run_forever, daemon=True, name="oflow-async"
+            target=self._loop.run_forever, daemon=True, name="cortex-async"
         )
         self._loop_thread.start()
         # Create the client on the loop thread so it binds to the right loop.
@@ -2391,12 +2391,12 @@ class VoiceDictationServer:
         release_pid_lock()
 
     def _osd_script(self) -> str | None:
-        """Locate oflow-osd.py (next to this file, user install, or system pkg)."""
+        """Locate cortex-osd.py (next to this file, user install, or system pkg)."""
         candidates = [
-            Path(__file__).resolve().parent / "oflow-osd.py",
-            Path.home() / ".local" / "share" / "oflow" / "oflow-osd.py",
-            Path("/usr/share/oflow/oflow-osd.py"),
-            Path("/usr/lib/oflow/oflow-osd.py"),
+            Path(__file__).resolve().parent / "cortex-osd.py",
+            Path.home() / ".local" / "share" / "cortex" / "cortex-osd.py",
+            Path("/usr/share/cortex/cortex-osd.py"),
+            Path("/usr/lib/cortex/cortex-osd.py"),
         ]
         for path in candidates:
             if path.exists():
@@ -2550,10 +2550,10 @@ class VoiceDictationServer:
         gives each dictation a strong, level input; the prior level is snapshotted
         by the caller and put back by _restore_mic_volume on stop, so the system
         mic is left exactly as we found it. Defaults slightly above 100% so quiet/
-        whispered speech still carries; override via OFLOW_MIC_VOLUME (e.g. "130%"
+        whispered speech still carries; override via CORTEX_MIC_VOLUME (e.g. "130%"
         for a very soft speaker, or "100%" to disable the boost).
         """
-        level = os.getenv("OFLOW_MIC_VOLUME", level)
+        level = os.getenv("CORTEX_MIC_VOLUME", level)
         try:
             subprocess.run(
                 ["pactl", "set-source-volume", "@DEFAULT_SOURCE@", level],
@@ -2566,7 +2566,7 @@ class VoiceDictationServer:
 
     def _restore_mic_volume(self):
         """Put the mic level back to the value snapshotted before we boosted it,
-        so oflow doesn't leave the system mic altered for other apps (e.g. calls).
+        so cortex doesn't leave the system mic altered for other apps (e.g. calls).
         No-op if nothing was snapshotted."""
         level = self._saved_mic_volume
         self._saved_mic_volume = None
@@ -2960,11 +2960,11 @@ class VoiceDictationServer:
                 pass
 
     def _run_brain(self, *args: str):
-        """Fire the brain CLI (oflow-brain) detached, best-effort — used for the
+        """Fire the brain CLI (cortex-brain) detached, best-effort — used for the
         initiative auto-linker so it never blocks or crashes a capture."""
         try:
             subprocess.Popen(
-                [str(Path.home() / ".local" / "bin" / "oflow-brain"), *args],
+                [str(Path.home() / ".local" / "bin" / "cortex-brain"), *args],
                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True,
             )
         except Exception as e:
@@ -3016,11 +3016,11 @@ class VoiceDictationServer:
 
         sink, source = _default("sink"), _default("source")
         self._meeting_modules = []
-        _load("module-null-sink", "sink_name=oflow_recmix",
-              "sink_properties=device.description=OflowRecMix")
-        _load("module-loopback", f"source={sink}.monitor", "sink=oflow_recmix", "latency_msec=20")
-        _load("module-loopback", f"source={source}", "sink=oflow_recmix", "latency_msec=20")
-        return "oflow_recmix.monitor"
+        _load("module-null-sink", "sink_name=cortex_recmix",
+              "sink_properties=device.description=CortexRecMix")
+        _load("module-loopback", f"source={sink}.monitor", "sink=cortex_recmix", "latency_msec=20")
+        _load("module-loopback", f"source={source}", "sink=cortex_recmix", "latency_msec=20")
+        return "cortex_recmix.monitor"
 
     def _meeting_teardown_mix(self):
         """Unload the PipeWire modules from _meeting_setup_mix (best-effort)."""
@@ -3389,7 +3389,7 @@ class VoiceDictationServer:
                 except Exception:
                     # A failed recording must never tear down the IPC server,
                     # otherwise the global shortcut goes permanently dead until
-                    # oflow is manually restarted. Log, signal the failure, and
+                    # cortex is manually restarted. Log, signal the failure, and
                     # keep listening.
                     logger.exception("Command handling failed; server staying alive")
                     try:
@@ -3459,7 +3459,7 @@ def validate_configuration() -> None:
     elif provider == "groq" and len(api_key) > GROQ_API_KEY_MAX_LENGTH:
         logger.error(
             "❌ Groq API key looks duplicated (too long). "
-            f"Expected ~{GROQ_API_KEY_LENGTH} chars, got {len(api_key)}. Check ~/.oflow/settings.json"
+            f"Expected ~{GROQ_API_KEY_LENGTH} chars, got {len(api_key)}. Check ~/.cortex/settings.json"
         )
 
     # Cleanup needs a chat-capable (Groq/OpenAI) key; warn if STT can't and none exists.
@@ -3501,7 +3501,7 @@ def stdin_listener() -> None:
 
 
 def main() -> None:
-    """Main entry point for Oflow."""
+    """Main entry point for Cortex."""
     global _server
 
     if len(sys.argv) > 1:
@@ -3509,7 +3509,7 @@ def main() -> None:
 
         if cmd not in ("start", "stop", "toggle", "note", "meeting"):
             print(f"Unknown command: {cmd}", file=sys.stderr)
-            print("Usage: oflow [start|stop|toggle|note|meeting]", file=sys.stderr)
+            print("Usage: cortex [start|stop|toggle|note|meeting]", file=sys.stderr)
             sys.exit(1)
 
         try:
@@ -3518,7 +3518,7 @@ def main() -> None:
             s.send(cmd.encode())
             s.close()
         except (ConnectionRefusedError, FileNotFoundError, OSError) as e:
-            print(f"Server not running: {e}\nStart the server with: ./oflow", file=sys.stderr)
+            print(f"Server not running: {e}\nStart the server with: ./cortex", file=sys.stderr)
             sys.exit(1)
     else:
         if not acquire_pid_lock():

@@ -44,21 +44,21 @@ jobs:
 
       - name: Build Python sidecar
         run: |
-          mkdir -p oflow-ui/src-tauri/bin
+          mkdir -p cortex-ui/src-tauri/bin
           pyinstaller \
             --onefile \
             --clean \
             --strip \
-            --name oflow-backend-x86_64-unknown-linux-gnu \
-            --distpath oflow-ui/src-tauri/bin \
+            --name cortex-backend-x86_64-unknown-linux-gnu \
+            --distpath cortex-ui/src-tauri/bin \
             --specpath /tmp \
             --hidden-import sounddevice \
             --hidden-import _sounddevice_data \
             --collect-all sounddevice \
-            oflow.py
+            cortex.py
 
       - name: Install frontend dependencies
-        working-directory: oflow-ui
+        working-directory: cortex-ui
         run: npm ci
 
       - name: Build Tauri app
@@ -66,9 +66,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          projectPath: oflow-ui
+          projectPath: cortex-ui
           tagName: ${{ github.ref_name }}
-          releaseName: 'oflow ${{ github.ref_name }}'
+          releaseName: 'cortex ${{ github.ref_name }}'
           releaseBody: |
             ## Install (Arch / Omarchy)
 
@@ -83,7 +83,7 @@ jobs:
             `sudo pacman -S ydotool playerctl gtk4-layer-shell python-gobject python-cairo`):
 
             ```bash
-            chmod +x oflow_*_amd64.AppImage && ./oflow_*_amd64.AppImage
+            chmod +x cortex_*_amd64.AppImage && ./cortex_*_amd64.AppImage
             ```
 
             ### Setup

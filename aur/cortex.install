@@ -1,7 +1,7 @@
 post_install() {
     cat <<'MSG'
 
-  oflow installed. Three quick steps (these touch your user config / session,
+  cortex installed. Three quick steps (these touch your user config / session,
   so a package can't do them for you):
 
   1) Enable the paste daemon + /dev/uinput access:
@@ -9,11 +9,11 @@ post_install() {
        systemctl --user enable --now ydotool.service
 
   2) Add the F8 push-to-talk keybinding to ~/.config/hypr/bindings.conf:
-       bind  = , F8, exec, oflow-ctl start
-       bindr = , F8, exec, oflow-ctl stop
+       bind  = , F8, exec, cortex-ctl start
+       bindr = , F8, exec, cortex-ctl stop
      then run:  hyprctl reload
 
-  3) Launch `oflow`, click the mic icon -> Settings -> paste a free Groq API
+  3) Launch `cortex`, click the mic icon -> Settings -> paste a free Groq API
      key from https://console.groq.com/keys
 
   Then hold F8, speak, release. End with "press enter" to also submit.

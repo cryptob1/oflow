@@ -6,7 +6,7 @@ import os
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from oflow import TextProcessor
+from cortex import TextProcessor
 
 
 class TestSpokenPunctuation:
@@ -72,9 +72,9 @@ class TestWordReplacements:
     @pytest.mark.unit
     def test_basic_replacement(self):
         """Basic word replacement should work."""
-        processor = TextProcessor(enable_punctuation=False, replacements={"oflow": "Oflow"})
+        processor = TextProcessor(enable_punctuation=False, replacements={"cortex": "Cortex"})
 
-        assert processor.process("test oflow here") == "test Oflow here"
+        assert processor.process("test cortex here") == "test Cortex here"
 
     @pytest.mark.unit
     def test_multiple_replacements(self):
@@ -99,10 +99,10 @@ class TestWordReplacements:
     @pytest.mark.unit
     def test_combined_punctuation_and_replacements(self):
         """Both features should work together."""
-        processor = TextProcessor(enable_punctuation=True, replacements={"oflow": "Oflow"})
+        processor = TextProcessor(enable_punctuation=True, replacements={"cortex": "Cortex"})
 
-        result = processor.process("using oflow comma it works period")
-        assert result == "using Oflow, it works."
+        result = processor.process("using cortex comma it works period")
+        assert result == "using Cortex, it works."
 
 
 class TestEdgeCases:

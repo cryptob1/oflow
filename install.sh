@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
 #
-# oflow installer — fast, accurate voice-to-text for Linux (Wayland/Hyprland).
+# cortex installer — fast, accurate voice-to-text for Linux (Wayland/Hyprland).
 #
 #   curl -fsSL https://raw.githubusercontent.com/cryptob1/oflow/master/install.sh | bash
 #
-# Installs dependencies, builds oflow, sets up the Copilot-key hotkey, the recording
+# Installs dependencies, builds cortex, sets up the Copilot-key hotkey, the recording
 # overlay, the ydotool paste daemon, and autostart. Arch / Omarchy.
 set -euo pipefail
 
 REPO="https://github.com/cryptob1/oflow.git"
-DIR="${OFLOW_DIR:-$HOME/code/oflow}"
+DIR="${CORTEX_DIR:-$HOME/code/cortex}"
 
 say() { printf '\n\033[1;36m==>\033[0m %s\n' "$1"; }
 
@@ -30,7 +30,7 @@ else
 fi
 cd "$DIR"
 
-say "Building & installing oflow (this takes a few minutes the first time)…"
+say "Building & installing cortex (this takes a few minutes the first time)…"
 make install
 
 say "Enabling the ydotool paste daemon…"
@@ -39,7 +39,7 @@ systemctl --user enable --now ydotool.service 2>/dev/null || true
 
 cat <<'DONE'
 
-  ✅ oflow installed.
+  ✅ cortex installed.
 
   1. Click the  󰍬  mic icon in Waybar (or the tray) → paste a free Groq API key
      from https://console.groq.com/keys

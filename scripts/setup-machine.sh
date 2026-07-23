@@ -1,19 +1,19 @@
 #!/usr/bin/env bash
-# oflow — set up a NEW machine end to end.
+# cortex — set up a NEW machine end to end.
 #
-# This does the oflow side (install + config). The vault itself syncs via your
-# chosen tool (Obsidian Sync / Syncthing / a cloud drive) — oflow just reads &
+# This does the cortex side (install + config). The vault itself syncs via your
+# chosen tool (Obsidian Sync / Syncthing / a cloud drive) — cortex just reads &
 # writes a plain-Markdown folder and is built to be multi-device-safe.
 #
 #   bash scripts/setup-machine.sh
 set -euo pipefail
 
-REPO="${OFLOW_REPO:-$HOME/code/oflow}"
-echo "== oflow: new-machine setup =="
+REPO="${CORTEX_REPO:-$HOME/code/cortex}"
+echo "== cortex: new-machine setup =="
 
 # 1. Repo
 if [ ! -d "$REPO/.git" ]; then
-  echo "Cloning oflow -> $REPO"
+  echo "Cloning cortex -> $REPO"
   git clone https://github.com/cryptob1/oflow.git "$REPO"
 fi
 cd "$REPO"
@@ -32,15 +32,15 @@ read -rp "Transcription provider [groq/elevenlabs/openai/deepgram] (groq): " PRO
 PROVIDER="${PROVIDER:-groq}"
 read -rp "API key for $PROVIDER (blank to set later in the app): " APIKEY
 
-# 4. Write ~/.oflow/settings.json (merge — never clobber existing settings)
+# 4. Write ~/.cortex/settings.json (merge — never clobber existing settings)
 python3 - "$VAULT" "$PROVIDER" "$APIKEY" <<'PY'
 import json, sys, pathlib
 vault, provider, key = sys.argv[1:4]
-p = pathlib.Path.home()/".oflow"/"settings.json"
+p = pathlib.Path.home()/".cortex"/"settings.json"
 p.parent.mkdir(parents=True, exist_ok=True)
 s = json.loads(p.read_text()) if p.exists() else {}
 s.update({"provider": provider,
-          "brainVaultPath": f"{vault}/oflow",   # oflow WRITES captures here
+          "brainVaultPath": f"{vault}/cortex",   # cortex WRITES captures here
           "brainReadRoot": vault,               # Ask/initiatives READ the whole vault
           "brainGit": False})                   # sync tool handles history, not git
 if key:
@@ -51,11 +51,11 @@ print("Wrote", p)
 PY
 
 # 5. Restart the backend
-systemctl --user restart app-oflow@autostart.service 2>/dev/null || true
+systemctl --user restart app-cortex@autostart.service 2>/dev/null || true
 
 cat <<EOF
 
-Done — oflow captures into: $VAULT/oflow
+Done — cortex captures into: $VAULT/cortex
 
 To sync this vault across your machines, pick ONE:
   • Obsidian Sync — open "$VAULT" in Obsidian, enable Sync, and autostart Obsidian (continuous while it runs)

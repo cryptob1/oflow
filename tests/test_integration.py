@@ -1,4 +1,4 @@
-"""Integration tests for Oflow transcription pipeline.
+"""Integration tests for Cortex transcription pipeline.
 
 These tests require API keys and make real API calls.
 Run with: pytest -m integration
@@ -19,7 +19,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from oflow import (
+from cortex import (
     load_settings,
     SAMPLE_RATE,
     ConfigurationError,
@@ -27,7 +27,7 @@ from oflow import (
 
 
 # Settings file location
-SETTINGS_FILE = Path.home() / ".oflow" / "settings.json"
+SETTINGS_FILE = Path.home() / ".cortex" / "settings.json"
 
 
 def get_groq_api_key():

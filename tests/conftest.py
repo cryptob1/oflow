@@ -1,4 +1,4 @@
-"""Pytest configuration and fixtures for oflow tests."""
+"""Pytest configuration and fixtures for cortex tests."""
 import sys
 import os
 import pytest

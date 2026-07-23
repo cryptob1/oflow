@@ -10,26 +10,26 @@
     {
       "identifier": "fs:allow-read-text-file",
       "allow": [
-        { "path": "$HOME/.oflow/*" }
+        { "path": "$HOME/.cortex/*" }
       ]
     },
     {
       "identifier": "fs:allow-write-text-file",
       "allow": [
-        { "path": "$HOME/.oflow/*" }
+        { "path": "$HOME/.cortex/*" }
       ]
     },
     {
       "identifier": "fs:allow-exists",
       "allow": [
-        { "path": "$HOME/.oflow" },
-        { "path": "$HOME/.oflow/*" }
+        { "path": "$HOME/.cortex" },
+        { "path": "$HOME/.cortex/*" }
       ]
     },
     {
       "identifier": "fs:allow-mkdir",
       "allow": [
-        { "path": "$HOME/.oflow" }
+        { "path": "$HOME/.cortex" }
       ]
     },
     "shell:allow-execute",
@@ -39,7 +39,7 @@
       "identifier": "shell:allow-spawn",
       "allow": [
         {
-          "name": "bin/oflow-backend",
+          "name": "bin/cortex-backend",
           "sidecar": true
         }
       ]

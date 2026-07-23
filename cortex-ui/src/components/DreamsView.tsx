@@ -51,7 +51,7 @@ export function DreamsView() {
                 <div>
                     <h2 className="text-3xl font-bold tracking-tight">Dreams</h2>
                     <p className="text-muted-foreground">
-                        While you sleep, oflow consolidates your notes & meetings into your initiatives. Runs nightly.
+                        While you sleep, cortex consolidates your notes & meetings into your initiatives. Runs nightly.
                     </p>
                 </div>
                 <Button onClick={dreamNow} disabled={dreaming}>

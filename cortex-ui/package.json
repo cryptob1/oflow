@@ -1,12 +1,12 @@
 {
-  "name": "oflow-ui",
+  "name": "cortex-ui",
   "private": true,
   "version": "0.2.0",
-  "description": "Voice dictation UI for oflow - Wispr Flow alternative for Linux",
+  "description": "Voice dictation UI for cortex - Wispr Flow alternative for Linux",
   "author": "CryptoB1 <cryptob1@users.noreply.github.com>",
   "repository": {
     "type": "git",
-    "url": "https://github.com/CryptoB1/oflow"
+    "url": "https://github.com/CryptoB1/cortex"
   },
   "type": "module",
   "scripts": {

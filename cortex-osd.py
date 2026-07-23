@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-"""oflow on-screen recording overlay.
+"""cortex on-screen recording overlay.
 
 A small, borderless, click-through layer-shell window anchored bottom-center
-that shows a recording dot and a live audio level meter while oflow records.
+that shows a recording dot and a live audio level meter while cortex records.
 
-It is spawned once by the oflow backend (at launch) and stays resident, hidden
+It is spawned once by the cortex backend (at launch) and stays resident, hidden
 between dictations, so the GTK startup cost is paid a single time rather than on
 every hotkey press. The backend drives it over a Unix datagram socket at
-$XDG_RUNTIME_DIR/oflow/osd.sock with these messages:
+$XDG_RUNTIME_DIR/cortex/osd.sock with these messages:
 
   - b"show"        reveal the overlay for a new recording
   - <float32>      an audio level in [0,1] (also auto-reveals if hidden)
@@ -31,7 +31,7 @@ gi.require_version("Gtk4LayerShell", "1.0")
 from gi.repository import Gtk, Gdk, Gio, GLib, Gtk4LayerShell as LayerShell  # noqa: E402
 import cairo  # noqa: E402
 
-RUNTIME_DIR = os.path.join(os.environ.get("XDG_RUNTIME_DIR", "/tmp"), "oflow")
+RUNTIME_DIR = os.path.join(os.environ.get("XDG_RUNTIME_DIR", "/tmp"), "cortex")
 SOCK_PATH = os.path.join(RUNTIME_DIR, "osd.sock")
 
 PILL_H = 54           # the meter capsule
@@ -48,7 +48,7 @@ class Osd(Gtk.Application):
         # restart would defer to a still-dying orphaned instance instead of
         # starting its own.
         super().__init__(
-            application_id="com.oflow.osd",
+            application_id="com.cortex.osd",
             flags=Gio.ApplicationFlags.NON_UNIQUE,
         )
         self.levels = [0.0] * N_BARS   # rolling history, newest at the end
@@ -73,7 +73,7 @@ class Osd(Gtk.Application):
         LayerShell.set_anchor(win, LayerShell.Edge.BOTTOM, True)
         LayerShell.set_margin(win, LayerShell.Edge.BOTTOM, 90)
         LayerShell.set_keyboard_mode(win, LayerShell.KeyboardMode.NONE)
-        LayerShell.set_namespace(win, "oflow-osd")
+        LayerShell.set_namespace(win, "cortex-osd")
 
         win.set_decorated(False)
         win.set_default_size(WIDTH, HEIGHT)
@@ -140,7 +140,7 @@ class Osd(Gtk.Application):
         self.quit()
 
     def _check_orphaned(self):
-        """Exit if our parent (the oflow backend) has gone away."""
+        """Exit if our parent (the cortex backend) has gone away."""
         if os.getppid() != self.parent_pid:
             self._shutdown()
             return False

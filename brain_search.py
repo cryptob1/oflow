@@ -1,4 +1,4 @@
-"""oflow brain search — local semantic Q&A over the note/meeting vault.
+"""cortex brain search — local semantic Q&A over the note/meeting vault.
 
 A lean, private RAG: chunk the vault's Markdown, embed it locally with fastembed
 (ONNX, no API key), retrieve the chunks most similar to a question, and let Groq
@@ -37,7 +37,7 @@ ANSWER_MODEL = "llama-3.3-70b-versatile"
 def _index_dir():
     # Outside the vault: the embedding index is derived/rebuildable and shouldn't
     # bloat Obsidian Sync (the vault may be a subfolder of an Obsidian vault).
-    d = Path.home() / ".cache" / "oflow" / "index"
+    d = Path.home() / ".cache" / "cortex" / "index"
     d.mkdir(parents=True, exist_ok=True)
     return d
 
@@ -208,8 +208,8 @@ def answer(query: str, k: int = 6) -> tuple[str, list[str]]:
 # is the precision filter. Keep it low so genuine matches with thin/short
 # initiative profiles (e.g. a goal with no goals list, or a name spelled slightly
 # differently) still become candidates; the verifier drops the false positives.
-LINK_THRESHOLD = float(os.environ.get("OFLOW_LINK_THRESHOLD", "0.45"))
-LINK_MAX = int(os.environ.get("OFLOW_LINK_MAX", "2"))
+LINK_THRESHOLD = float(os.environ.get("CORTEX_LINK_THRESHOLD", "0.45"))
+LINK_MAX = int(os.environ.get("CORTEX_LINK_MAX", "2"))
 
 _FM_RE = re.compile(r"^---\n(.*?)\n---\n", re.DOTALL)
 
@@ -427,14 +427,14 @@ def initiative_status(name_or_slug: str) -> dict:
     items = _linked_items(_fm_field(fm, "id"))
     goals = "\n".join(_fm_list(fm, "goals"))
 
-    # Augment the explicitly-linked oflow captures with related notes from the
+    # Augment the explicitly-linked cortex captures with related notes from the
     # WHOLE vault (your existing notes too), retrieved semantically and verified so
     # only genuinely-relevant ones are included. Read-only — existing notes untouched.
     # Query on title + goals only (not the Log/Status, which would drift the match).
     profile = f"{title}\n{goals}".strip()
     have = {it["source"] for it in items}
     for doc, _score in search(profile, k=6):
-        if doc["source"] in have or doc["source"].startswith("oflow/initiatives/"):
+        if doc["source"] in have or doc["source"].startswith("cortex/initiatives/"):
             continue
         if _verify_link(doc["text"], {"text": profile}):
             items.append({"source": doc["source"], "created": "", "text": doc["text"]})
@@ -474,7 +474,7 @@ def initiative_status(name_or_slug: str) -> dict:
 # --------------------------------------------------------------------------- #
 # Dreams: nightly consolidation of captures into initiatives
 # --------------------------------------------------------------------------- #
-_STATUS_START, _STATUS_END = "<!-- oflow:status -->", "<!-- /oflow:status -->"
+_STATUS_START, _STATUS_END = "<!-- cortex:status -->", "<!-- /cortex:status -->"
 
 
 def _write_status_snapshot(f: Path, status_md: str, ts: datetime) -> None:
@@ -551,7 +551,7 @@ def _write_dream_journal(linked: int, updated: list, stale: list,
     return brain.write_item(
         "dream", "dreams", f"{ts:%Y-%m-%d-%H%M}",
         title=f"Dream — {ts:%Y-%m-%d %H:%M}", body="\n".join(lines) + "\n",
-        source="oflow-dream", timestamp=ts,
+        source="cortex-dream", timestamp=ts,
     )
 
 
@@ -602,7 +602,7 @@ def dream(force: bool = False) -> dict:
 # --------------------------------------------------------------------------- #
 from datetime import timedelta  # noqa: E402
 
-TRANSCRIPTS_FILE = Path.home() / ".oflow" / "transcripts.jsonl"
+TRANSCRIPTS_FILE = Path.home() / ".cortex" / "transcripts.jsonl"
 
 JOURNAL_PROMPT = (
     "You are writing the user's personal daily journal from their voice dictations "

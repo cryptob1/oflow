@@ -32,7 +32,7 @@ export default function App() {
             <div className="h-8 w-8 rounded-full bg-primary flex items-center justify-center">
               <Mic className="h-4 w-4 text-primary-foreground" />
             </div>
-            <h1 className="font-bold text-xl tracking-tight">oflow</h1>
+            <h1 className="font-bold text-xl tracking-tight">cortex</h1>
           </div>
 
           <nav className="space-y-2">
@@ -120,7 +120,7 @@ export default function App() {
           {activeTab === "initiatives" && <InitiativesView />}
           {activeTab === "dreams" && <DreamsView />}
           {activeTab === "journal" && <JournalView />}
-          {activeTab === "reminders" && <VaultView kind="reminders" title="Reminders" subtitle="Say &quot;remind me to…&quot; in a note — oflow notifies you when it's due." />}
+          {activeTab === "reminders" && <VaultView kind="reminders" title="Reminders" subtitle="Say &quot;remind me to…&quot; in a note — cortex notifies you when it's due." />}
           {activeTab === "history" && <HistoryView />}
           {activeTab === "notes" && <VaultView kind="notes" title="Notes" subtitle="Quick notes you captured with Copilot+N." />}
           {activeTab === "meetings" && <VaultView kind="meetings" title="Meetings" subtitle="Recorded meetings, summarized with Copilot+M." />}

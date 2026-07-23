@@ -72,7 +72,7 @@ export async function hideWindow(): Promise<void> {
  */
 export async function getTranscripts(): Promise<Transcript[]> {
     try {
-        const contents = await readTextFile('.oflow/transcripts.jsonl', {
+        const contents = await readTextFile('.cortex/transcripts.jsonl', {
             baseDir: BaseDirectory.Home
         });
 
@@ -227,7 +227,7 @@ export async function runJournal(): Promise<JournalResult> {
  */
 export async function loadSettings(): Promise<Settings> {
     try {
-        const contents = await readTextFile('.oflow/settings.json', {
+        const contents = await readTextFile('.cortex/settings.json', {
             baseDir: BaseDirectory.Home
         });
         return JSON.parse(contents) as Settings;
@@ -244,11 +244,11 @@ export async function loadSettings(): Promise<Settings> {
  */
 export async function saveSettings(settings: Settings): Promise<void> {
     try {
-        const dirExists = await exists('.oflow', { baseDir: BaseDirectory.Home });
+        const dirExists = await exists('.cortex', { baseDir: BaseDirectory.Home });
         if (!dirExists) {
-            await mkdir('.oflow', { baseDir: BaseDirectory.Home });
+            await mkdir('.cortex', { baseDir: BaseDirectory.Home });
         }
-        await writeTextFile('.oflow/settings.json', JSON.stringify(settings, null, 2), {
+        await writeTextFile('.cortex/settings.json', JSON.stringify(settings, null, 2), {
             baseDir: BaseDirectory.Home
         });
     } catch (error) {
@@ -261,11 +261,11 @@ export async function saveSettings(settings: Settings): Promise<void> {
  */
 export async function clearHistory(): Promise<void> {
     try {
-        const dirExists = await exists('.oflow', { baseDir: BaseDirectory.Home });
+        const dirExists = await exists('.cortex', { baseDir: BaseDirectory.Home });
         if (!dirExists) {
-            await mkdir('.oflow', { baseDir: BaseDirectory.Home });
+            await mkdir('.cortex', { baseDir: BaseDirectory.Home });
         }
-        await writeTextFile('.oflow/transcripts.jsonl', '', {
+        await writeTextFile('.cortex/transcripts.jsonl', '', {
             baseDir: BaseDirectory.Home
         });
     } catch (error) {

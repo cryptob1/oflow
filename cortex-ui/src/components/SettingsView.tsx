@@ -8,7 +8,7 @@ import { loadSettings, saveSettings, clearHistory, type Settings } from "@/lib/a
 import { Eye, EyeOff, Shield, Zap, Keyboard, Brain } from "lucide-react";
 import { useToast } from "@/components/ui/toast";
 
-// Mirrors SPOKEN_ACTIONS in oflow.py. Shown read-only so users can see what
+// Mirrors SPOKEN_ACTIONS in cortex.py. Shown read-only so users can see what
 // they can say; the backend is the source of truth for what actually fires.
 // {w} is replaced with the configured wake word at render time.
 const SPOKEN_COMMANDS: { say: string; does: string; key: string }[] = [
@@ -614,7 +614,7 @@ export function SettingsView() {
                             <Keyboard className="h-5 w-5" />
                             Spoken Commands
                         </CardTitle>
-                        <CardDescription>Say the wake word + a command and oflow presses the real key — anywhere in a dictation.</CardDescription>
+                        <CardDescription>Say the wake word + a command and cortex presses the real key — anywhere in a dictation.</CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-4">
                         <div className="flex items-center justify-between space-x-2">
@@ -680,8 +680,8 @@ export function SettingsView() {
                                 </Button>
                             </div>
                             <p className="text-xs text-muted-foreground">
-                                Where oflow <strong>writes</strong> captures. Plain Markdown, Obsidian-compatible.
-                                To keep it inside an existing vault, use a subfolder like <code>&lt;vault&gt;/oflow</code>.
+                                Where cortex <strong>writes</strong> captures. Plain Markdown, Obsidian-compatible.
+                                To keep it inside an existing vault, use a subfolder like <code>&lt;vault&gt;/cortex</code>.
                             </p>
                         </div>
                         <div className="space-y-2">
@@ -701,7 +701,7 @@ export function SettingsView() {
                             <p className="text-xs text-muted-foreground">
                                 Where Ask &amp; initiatives <strong>read</strong> from. Set to your whole Obsidian
                                 vault (e.g. <code>~/Documents/work</code>) so they cover your existing notes too —
-                                oflow still only writes to the folder above.
+                                cortex still only writes to the folder above.
                             </p>
                         </div>
                         <div className="flex items-center justify-between space-x-2">
@@ -747,13 +747,13 @@ export function SettingsView() {
                         <div className="p-3 bg-green-500/10 border border-green-500/20 rounded-lg">
                             <p className="text-sm text-green-700 dark:text-green-400">
                                 <strong>Your Data, Your Control</strong> - All transcripts and settings are stored locally on your machine.
-                                oflow has no cloud backend or analytics. Audio is only sent to your chosen provider (Groq/OpenAI) for transcription.
+                                cortex has no cloud backend or analytics. Audio is only sent to your chosen provider (Groq/OpenAI) for transcription.
                             </p>
                         </div>
                         <div className="space-y-1">
                             <Label>Data Location</Label>
                             <div className="p-2 bg-muted rounded-md text-sm font-mono">
-                                ~/.oflow/transcripts.jsonl
+                                ~/.cortex/transcripts.jsonl
                             </div>
                         </div>
                         <div className="space-y-1">

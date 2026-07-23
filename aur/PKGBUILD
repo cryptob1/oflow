@@ -1,6 +1,6 @@
 # Maintainer: cryptob1 <cryptob1@users.noreply.github.com>
-pkgname=oflow-bin
-_pkgname=oflow
+pkgname=cortex-bin
+_pkgname=cortex
 pkgver=0.2.0
 pkgrel=1
 pkgdesc="Fast, accurate voice-to-text dictation for Linux (Wayland/Hyprland), powered by Groq Whisper. Hold F8, speak, paste into any app."
@@ -12,12 +12,12 @@ license=('MIT')
 # webkit2gtk-4.1 (Tauri UI). The AppImage bundles the Python backend.
 depends=('ydotool' 'playerctl' 'gtk4-layer-shell' 'python-gobject' 'python-cairo'
          'webkit2gtk-4.1' 'jq' 'fuse2' 'hicolor-icon-theme')
-provides=('oflow')
-conflicts=('oflow')
+provides=('cortex')
+conflicts=('cortex')
 install="${_pkgname}.install"
 options=(!strip)
 
-_appimage="oflow_${pkgver}_amd64.AppImage"
+_appimage="cortex_${pkgver}_amd64.AppImage"
 source=("${_appimage}::${url}/releases/download/v${pkgver}/${_appimage}"
         "${_pkgname}-${pkgver}.tar.gz::${url}/archive/refs/tags/v${pkgver}.tar.gz")
 noextract=("${_appimage}")
@@ -30,24 +30,24 @@ prepare() {
 }
 
 package() {
-    # App (Tauri UI + bundled Python backend) → /opt, launcher → /usr/bin/oflow
+    # App (Tauri UI + bundled Python backend) → /opt, launcher → /usr/bin/cortex
     install -Dm755 "${srcdir}/${_appimage}" "${pkgdir}/opt/${_pkgname}/${_pkgname}.AppImage"
     install -dm755 "${pkgdir}/usr/bin"
-    ln -s "/opt/${_pkgname}/${_pkgname}.AppImage" "${pkgdir}/usr/bin/oflow"
+    ln -s "/opt/${_pkgname}/${_pkgname}.AppImage" "${pkgdir}/usr/bin/cortex"
 
     cd "${srcdir}/${_pkgname}-${pkgver}"
 
-    # Recording overlay (found by the backend at /usr/share/oflow/oflow-osd.py)
-    install -Dm755 oflow-osd.py "${pkgdir}/usr/share/oflow/oflow-osd.py"
+    # Recording overlay (found by the backend at /usr/share/cortex/cortex-osd.py)
+    install -Dm755 cortex-osd.py "${pkgdir}/usr/share/cortex/cortex-osd.py"
 
     # Socket controller for the Hyprland push-to-talk keybinding
-    install -Dm755 scripts/oflow-ctl "${pkgdir}/usr/bin/oflow-ctl"
+    install -Dm755 scripts/cortex-ctl "${pkgdir}/usr/bin/cortex-ctl"
 
     # Desktop entry + icons (from the AppImage)
-    if [[ -f "${srcdir}/squashfs-root/oflow.desktop" ]]; then
-        sed "s|^Exec=.*|Exec=/usr/bin/oflow|" "${srcdir}/squashfs-root/oflow.desktop" \
-            > "oflow.desktop.tmp"
-        install -Dm644 "oflow.desktop.tmp" "${pkgdir}/usr/share/applications/oflow.desktop"
+    if [[ -f "${srcdir}/squashfs-root/cortex.desktop" ]]; then
+        sed "s|^Exec=.*|Exec=/usr/bin/cortex|" "${srcdir}/squashfs-root/cortex.desktop" \
+            > "cortex.desktop.tmp"
+        install -Dm644 "cortex.desktop.tmp" "${pkgdir}/usr/share/applications/cortex.desktop"
     fi
     if [[ -d "${srcdir}/squashfs-root/usr/share/icons" ]]; then
         cp -a "${srcdir}/squashfs-root/usr/share/icons" "${pkgdir}/usr/share/"

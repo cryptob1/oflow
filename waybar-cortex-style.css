@@ -1,21 +1,21 @@
-/* Oflow voice dictation Waybar styling */
-#custom-oflow {
+/* Cortex voice dictation Waybar styling */
+#custom-cortex {
     padding: 0 8px;
     margin: 0 4px;
 }
 
-#custom-oflow.idle {
+#custom-cortex.idle {
     color: #50fa7b;  /* Green - ready */
 }
 
-#custom-oflow.recording {
+#custom-cortex.recording {
     color: #ff5555;  /* Red - recording */
 }
 
-#custom-oflow.transcribing {
+#custom-cortex.transcribing {
     color: #f1fa8c;  /* Yellow - processing */
 }
 
-#custom-oflow.error {
+#custom-cortex.error {
     color: #ff5555;  /* Red - error */
 }

@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Send a command (start/stop/toggle) to the oflow backend over its Unix socket.
+"""Send a command (start/stop/toggle) to the cortex backend over its Unix socket.
 
 Used by the Hyprland keybindings (e.g. F8 push-to-talk):
-    bind  = , F8, exec, oflow-ctl start
-    bindr = , F8, exec, oflow-ctl stop
+    bind  = , F8, exec, cortex-ctl start
+    bindr = , F8, exec, cortex-ctl stop
 """
 import socket
 import sys

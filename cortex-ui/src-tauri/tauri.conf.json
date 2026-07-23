@@ -1,8 +1,8 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
-  "productName": "oflow",
+  "productName": "Cortex",
   "version": "0.2.0",
-  "identifier": "com.oflow.app",
+  "identifier": "com.cortex.app",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:1420",
@@ -13,7 +13,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "oflow",
+        "title": "Cortex",
         "width": 800,
         "height": 600,
         "resizable": true,
@@ -38,7 +38,7 @@
       "icons/icon.ico"
     ],
     "externalBin": [
-      "bin/oflow-backend"
+      "bin/cortex-backend"
     ],
     "linux": {
       "appimage": {
