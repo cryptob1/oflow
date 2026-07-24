@@ -615,15 +615,18 @@ from datetime import timedelta  # noqa: E402
 TRANSCRIPTS_FILE = Path.home() / ".cortex" / "transcripts.jsonl"
 
 JOURNAL_PROMPT = (
-    "You are writing the user's personal daily journal from their voice dictations "
-    "throughout the day. Each line is a timestamped snippet they spoke into some app "
-    "(the app/window, when known, is in brackets) — chat, email, editor, browser, docs. "
-    "Topics jump around and there's noise (short confirmations, commands, half-thoughts). "
-    "Reconstruct a concise, readable journal of what they actually worked on: group by "
-    "theme/project, note roughly WHEN (times, or morning/afternoon/evening) and — where "
-    "clear — in which tool. Surface notable decisions, threads, and to-dos. Ignore trivial "
-    "snippets. Output Markdown: a one-line **Summary**, then a short **## Timeline** and a "
-    "**## By theme** section with bullets. First person, terse. Base it only on the dictations."
+    "You are writing the user's personal daily journal from their activity throughout "
+    "the day. Each line is timestamped, with the app/window in brackets. Two kinds of line: "
+    "spoken dictation snippets (chat, email, editor, browser, docs), and lines tagged "
+    "[screen …], which are NOT spoken — they're a short description of whatever window was "
+    "focused at that moment (what they were reading, editing, or browsing). Use [screen] "
+    "lines as context to understand what they were actually working on. "
+    "Topics jump around and there's noise (short confirmations, commands, half-thoughts, "
+    "UI chrome). Reconstruct a concise, readable journal of what they actually worked on: "
+    "group by theme/project, note roughly WHEN (times, or morning/afternoon/evening) and — "
+    "where clear — in which tool. Surface notable decisions, threads, and to-dos. Ignore "
+    "trivial snippets. Output Markdown: a one-line **Summary**, then a short **## Timeline** "
+    "and a **## By theme** section with bullets. First person, terse. Base it only on the input."
 )
 
 
@@ -656,22 +659,41 @@ def _journal_records(date_str: str) -> list[dict]:
     return recs
 
 
-def journal_day(date_str: str | None = None) -> dict:
-    """Synthesize a daily journal from that day's dictations, aggregated across
-    every machine (via the synced streams — see _journal_records). Idempotent:
-    one file per day that re-running overwrites, so machines converge as their
-    stream fragments sync in."""
-    date_str = date_str or datetime.now().strftime("%Y-%m-%d")
-    lines = []
+def _journal_lines(date_str: str) -> list[str]:
+    """The day's timeline for the journal LLM: spoken dictations and [screen]
+    activity (local OCR), time-merged across machines. Activity is volume-capped
+    so a window-switching-heavy day can't blow the context; dictations are kept
+    in full."""
+    dict_lines, act_lines = [], []
     for d in _journal_records(date_str):
-        text = (d.get("cleaned") or d.get("raw") or "").strip()
-        if len(text) < 3:
-            continue
         ts = str(d.get("timestamp", ""))
         app = d.get("app", "")
-        lines.append(f"[{ts[11:16]}]" + (f" [{app}]" if app else "") + f" {text}")
+        if d.get("kind") == "activity":
+            text = " ".join((d.get("text") or "").split())  # flatten noisy OCR
+            if len(text) < 3:
+                continue
+            act_lines.append((ts, f"[{ts[11:16]}] [screen {app}] {text}"))
+        else:
+            text = (d.get("cleaned") or d.get("raw") or "").strip()
+            if len(text) < 3:
+                continue
+            dict_lines.append((ts, f"[{ts[11:16]}]" + (f" [{app}]" if app else "") + f" {text}"))
+    MAX_ACTIVITY = 200
+    if len(act_lines) > MAX_ACTIVITY:
+        step = len(act_lines) / MAX_ACTIVITY
+        act_lines = [act_lines[int(i * step)] for i in range(MAX_ACTIVITY)]
+    return [ln for _, ln in sorted(dict_lines + act_lines, key=lambda x: x[0])]
+
+
+def journal_day(date_str: str | None = None) -> dict:
+    """Synthesize a daily journal from that day's activity — spoken dictations plus
+    local [screen] OCR context — aggregated across every machine (via the synced
+    streams). Idempotent: one file per day that re-running overwrites, so machines
+    converge as their stream fragments sync in."""
+    date_str = date_str or datetime.now().strftime("%Y-%m-%d")
+    lines = _journal_lines(date_str)
     if len(lines) < 3:
-        return {"skipped": True, "reason": f"only {len(lines)} dictations", "date": date_str}
+        return {"skipped": True, "reason": f"only {len(lines)} entries", "date": date_str}
     key = _groq_key()
     if not key:
         return {"skipped": True, "reason": "no groq key", "date": date_str}

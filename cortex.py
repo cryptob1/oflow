@@ -172,6 +172,16 @@ API_TIMEOUT_SECONDS = 30.0  # Timeout for API requests
 MAX_TRANSCRIBE_CONCURRENCY = int(os.getenv("CORTEX_MAX_TRANSCRIBE_CONCURRENCY", "12"))
 # How often the backend checks the vault for due reminders to fire.
 REMINDER_POLL_SECONDS = int(os.getenv("CORTEX_REMINDER_POLL_SECONDS", "30"))
+# Screen context (opt-in): how often the sampler OCRs the active window for the
+# journal/dream. It only records when the window actually changed, so this is a
+# ceiling, not a fixed rate.
+SCREEN_SAMPLE_SECONDS = int(os.getenv("CORTEX_SCREEN_SAMPLE_SECONDS", "60"))
+# Windows never OCR'd — sensitive apps whose contents shouldn't be logged even
+# locally. Substring match against the window's class + title (case-insensitive).
+DEFAULT_SCREEN_DENYLIST = [
+    "1password", "bitwarden", "keepassxc", "keepass", "lastpass", "proton pass",
+    "private browsing", "incognito", "gnome-keyring", "polkit",
+]
 # How long an idle keep-alive socket may be reused before it's recycled. Kept
 # below typical server/NAT idle timeouts so we don't try to send on a socket the
 # other end has already dropped (e.g. after laptop suspend/resume).
@@ -875,6 +885,19 @@ class StorageManager:
                 f.write(json.dumps(entry) + "\n")
         except Exception:
             logger.debug("vault stream mirror skipped", exc_info=True)
+
+    def append_activity(self, rec: dict) -> None:
+        """Log observed screen activity (local OCR of the active window) into the
+        day's per-machine journal stream — same file as dictations, tagged so the
+        journal/dream treat it as context, not speech. Never touches the local
+        transcripts log; it's not a dictation."""
+        entry = {
+            "timestamp": datetime.now().isoformat(timespec="seconds"),
+            "kind": "activity",
+            "app": f'{rec.get("app", "?")} "{(rec.get("title") or "")[:60]}"',
+            "text": rec.get("text", ""),
+        }
+        self._mirror_to_vault_stream(entry)
 
     def count_transcripts(self) -> int:
         """Count total transcripts."""
@@ -1743,6 +1766,46 @@ def _clipboard_ready(text: str, timeout: float = 0.2) -> bool:
     return False
 
 
+def _screen_context_enabled() -> bool:
+    """Screen-context capture is opt-in (privacy) and needs the vault to store to."""
+    return _HAS_BRAIN and bool(brain._settings().get("screenContext", False))
+
+
+def _screen_denylist() -> list[str]:
+    dl = brain._settings().get("screenDenylist") if _HAS_BRAIN else None
+    return dl if isinstance(dl, list) else DEFAULT_SCREEN_DENYLIST
+
+
+def _gemini_key() -> str | None:
+    """Google API key for the vision captioner (Gemini 2.5 Flash). Without it,
+    screen context falls back to local OCR."""
+    key = os.environ.get("GEMINI_API_KEY")
+    if key:
+        return key
+    return brain._settings().get("geminiApiKey") if _HAS_BRAIN else None
+
+
+def _capture_screen_context(storage, hint: str = "") -> None:
+    """Grab the active window, distill it (Gemini vision → one line), and log it as
+    an activity record. Best-effort; safe to call from a thread. Requires a vision
+    key — without one we don't capture at all (no surprise local processing); OCR is
+    only a fallback if an individual vision call fails."""
+    key = _gemini_key()
+    if not _screen_context_enabled() or not key:
+        return
+    try:
+        import screen
+    except ImportError:
+        return
+    try:
+        rec = screen.describe_active_window(_screen_denylist(), key, hint)
+        if rec:
+            storage.append_activity(rec)
+            logger.debug("Screen context logged (%s): %s", rec.get("mode"), rec.get("app"))
+    except Exception:
+        logger.debug("Screen context capture failed", exc_info=True)
+
+
 def _active_window_desc() -> str:
     """Short 'class "title"' of the focused window — so a vanished paste's target
     is visible in the log (right window but empty clipboard, or the wrong window)."""
@@ -2233,6 +2296,32 @@ class VoiceDictationServer:
         if _HAS_BRAIN:
             threading.Thread(target=self._reminder_watch_loop, daemon=True,
                              name="cortex-reminders").start()
+            # Passively describe the active window (opt-in) so the journal/dream see
+            # the silent work dictation misses.
+            threading.Thread(target=self._screen_sampler_loop, daemon=True,
+                             name="cortex-screen").start()
+
+    def _screen_sampler_loop(self):
+        """When enabled, describe the active window on a slow tick — but only when
+        the window actually changed, so we don't re-caption a window you're sitting
+        in (saves vision calls and avoids near-duplicate entries)."""
+        storage = StorageManager()
+        last_win = None
+        while getattr(self, "_running", True):
+            time.sleep(SCREEN_SAMPLE_SECONDS)
+            if not _screen_context_enabled():
+                last_win = None
+                continue
+            try:
+                import screen
+                w = screen._active_window()  # cheap identity probe (no screenshot)
+                win = ((w.get("class") or ""), (w.get("title") or ""))
+                if win == last_win or not any(win):
+                    continue  # same window as last sample — skip
+                last_win = win
+                _capture_screen_context(storage)
+            except Exception:
+                logger.debug("Screen sample failed", exc_info=True)
 
     def _reminder_watch_loop(self):
         """Poll the vault for due reminders and fire a notification for each."""
@@ -3376,6 +3465,11 @@ class VoiceDictationServer:
             timestamp=datetime.now().isoformat(),
             app=_active_window_desc(),
         )
+        # Capture what's on screen at this moment (opt-in) so the journal/dream know
+        # what you were dictating INTO, not just what you said. Threaded — the vision
+        # call must never delay the paste flow.
+        threading.Thread(target=_capture_screen_context, args=(storage, cleaned_text),
+                          daemon=True, name="cortex-screenctx").start()
 
     def run(self):
         """Main server loop."""
