@@ -777,13 +777,13 @@ export function SettingsView() {
                             </div>
                             <Switch
                                 id="screenContext"
-                                checked={settings.screenContext ?? false}
+                                checked={settings.screenContext ?? true}
                                 onCheckedChange={(c) => handleSettingChange("screenContext", c)}
                                 disabled={isLoading}
                             />
                         </div>
 
-                        <div className={`space-y-2 ${(settings.screenContext ?? false) ? '' : 'opacity-50'}`}>
+                        <div className={`space-y-2 ${(settings.screenContext ?? true) ? '' : 'opacity-50'}`}>
                             <Label htmlFor="geminiKey">Gemini API Key</Label>
                             <div className="flex gap-2">
                                 <div className="relative flex-1">
@@ -813,24 +813,9 @@ export function SettingsView() {
                                 </Button>
                             </div>
                             <p className="text-xs text-muted-foreground">
-                                Get one free at <code>aistudio.google.com/apikey</code>. Without a key, screen
-                                context stays off — nothing is captured (no local processing).
+                                Get one free at <code>aistudio.google.com/apikey</code>. Without a key, nothing
+                                is captured. Capture is a quick screenshot sent to the cloud — no local processing.
                             </p>
-                        </div>
-
-                        <div className={`flex items-center justify-between space-x-2 ${(settings.screenContext ?? false) ? '' : 'opacity-50'}`}>
-                            <div className="space-y-1">
-                                <Label htmlFor="screenAcOnly">Only on AC power</Label>
-                                <p className="text-sm text-muted-foreground">
-                                    Pause capture while on battery.
-                                </p>
-                            </div>
-                            <Switch
-                                id="screenAcOnly"
-                                checked={settings.screenContextACOnly ?? false}
-                                onCheckedChange={(c) => handleSettingChange("screenContextACOnly", c)}
-                                disabled={isLoading || !(settings.screenContext ?? false)}
-                            />
                         </div>
                     </CardContent>
                 </Card>

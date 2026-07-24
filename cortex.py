@@ -1767,8 +1767,9 @@ def _clipboard_ready(text: str, timeout: float = 0.2) -> bool:
 
 
 def _screen_context_enabled() -> bool:
-    """Screen-context capture is opt-in (privacy) and needs the vault to store to."""
-    return _HAS_BRAIN and bool(brain._settings().get("screenContext", False))
+    """On by default, but gated on a Gemini key downstream (no key → no capture), so
+    it only actually runs once you've opted into cloud vision. Needs the vault."""
+    return _HAS_BRAIN and bool(brain._settings().get("screenContext", True))
 
 
 def _screen_denylist() -> list[str]:
@@ -1785,29 +1786,6 @@ def _gemini_key() -> str | None:
     return brain._settings().get("geminiApiKey") if _HAS_BRAIN else None
 
 
-def _on_ac_power() -> bool:
-    """True if a mains adapter is plugged in (or there's no battery at all, e.g. a
-    desktop). Used to optionally pause screen capture on battery."""
-    try:
-        supplies = list(Path("/sys/class/power_supply").glob("*"))
-    except OSError:
-        return True
-    mains = False
-    for s in supplies:
-        try:
-            if (s / "type").read_text().strip() == "Mains":
-                mains = True
-                if (s / "online").read_text().strip() == "1":
-                    return True
-        except OSError:
-            continue
-    return not mains  # no mains supply seen → treat as always-powered (desktop)
-
-
-def _screen_ac_only() -> bool:
-    return _HAS_BRAIN and bool(brain._settings().get("screenContextACOnly", False))
-
-
 def _capture_screen_context(storage, hint: str = "") -> None:
     """Grab the active window, distill it (Gemini vision → one line), and log it as
     an activity record. Best-effort; safe to call from a thread. Requires a vision
@@ -1816,8 +1794,6 @@ def _capture_screen_context(storage, hint: str = "") -> None:
     key = _gemini_key()
     if not _screen_context_enabled() or not key:
         return
-    if _screen_ac_only() and not _on_ac_power():
-        return  # on battery and set to AC-only — skip to save power
     try:
         import screen
     except ImportError:
